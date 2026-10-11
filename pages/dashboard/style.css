@@ -154,14 +154,25 @@ body {
 
 .hidden { display: none !important; }
 
-/* 可视化地址行 */
-.cbm-uiurl { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-.cbm-uiurl input {
-  flex: 1; min-width: 0; padding: 8px 11px; border-radius: 10px;
-  border: 1px solid var(--border); background: var(--panel-soft);
-  color: var(--text); font-size: 12.5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  outline: none;
+/* 标签页导航 */
+.cbm-tabs {
+  display: flex; gap: 4px; margin: 18px 0 16px;
+  border-bottom: 1px solid var(--border); overflow-x: auto;
 }
+.cbm-tab {
+  appearance: none; border: none; background: none; cursor: pointer;
+  padding: 9px 14px; font-size: 13.5px; color: var(--muted);
+  border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap;
+}
+.cbm-tab:hover { color: var(--text); }
+.cbm-tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+.cbm-panels { display: block; }
+.cbm-panel { display: none; }
+.cbm-panel.active { display: block; }
+
+/* 可视化地址（位于运行状态卡片内） */
+.stat value.off { color: var(--muted); }
+.stat value#st-uiurl { font-size: 12.5px; cursor: text; }
 .cbm-hint.warn { color: var(--warn); }
 
 /* 日志工具栏 & MCP 接入配置 */

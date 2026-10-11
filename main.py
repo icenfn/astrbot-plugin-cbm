@@ -200,7 +200,6 @@ class CbmPlugin(Star):
             data = await self._call(self.manager.status)
         except Exception as exc:  # noqa: BLE001
             return self._err(exc)
-        data["ui_url"] = data.get("ui_url")
         return json_response(data)
 
     async def api_versions(self):
@@ -213,6 +212,19 @@ class CbmPlugin(Star):
             "platform": {
                 "os": self.manager.os_name,
                 "arch": self.manager.arch,
+            },
+            # 插件配置项（_conf_schema.json）的当前值，供 WebUI 表单作默认值，
+            # 使「插件配置 = 启动默认值」与「WebUI = 本次操作参数」的关系清晰。
+            "defaults": {
+                "variant": self._cfg("variant", "ui"),
+                "version": self._cfg("version", "latest"),
+                "mirror": self._cfg("mirror", DEFAULT_MIRROR),
+                "port": self._cfg_int("port", DEFAULT_PORT),
+                "ui_proxy_host": self._cfg("ui_proxy_host", DEFAULT_PROXY_HOST),
+                "ui_proxy_port": self._cfg_int("ui_proxy_port", DEFAULT_PROXY_PORT),
+                "auto_start": self._cfg_bool("auto_start", False),
+                "stop_on_unload": self._cfg_bool("stop_on_unload", True),
+                "purge_data_on_uninstall": self._cfg_bool("purge_data_on_uninstall", False),
             },
         }
         try:
@@ -337,7 +349,7 @@ class CbmPlugin(Star):
         variant, port, cache_dir = await self._resolve_run_options(payload)
         try:
             await self._call(self.manager.stop_proxy)
-            self.manager.stop()
+            await self._call(self.manager.stop)
             data = await self._call(self.manager.start, variant, port, cache_dir)
             proxy = await self._start_proxy_if_ui(variant, port)
         except Exception as exc:  # noqa: BLE001

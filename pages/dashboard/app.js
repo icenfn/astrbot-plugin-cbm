@@ -4,7 +4,7 @@
 const bridge = window.AstrBotPluginPage;
 
 const $ = (id) => document.getElementById(id);
-const state = { variant: "ui", installPolling: null, uiUrl: null };
+const state = { variant: "ui", tab: "overview", installPolling: null, uiUrl: null };
 
 // --------------------------- 通用工具 --------------------------- //
 function toast(msg, type = "") {
@@ -97,6 +97,7 @@ function buildUiUrl(s) {
 }
 
 function renderStatus(s) {
+  applyConfigDefaults(s);
   const running = !!s.running;
   const installed = !!s.installed;
 
@@ -148,39 +149,37 @@ function renderStatus(s) {
   // WebUI 地址（经插件反向代理对外暴露；CBM 自身仅监听 127.0.0.1）
   const uiUrl = running && s.variant === "ui" ? buildUiUrl(s) : null;
   state.uiUrl = uiUrl;
-  const tag = $("ui-state-tag");
-  const input = $("ui-url-input");
-  const copyBtn = $("btn-copy-url");
-  const openLink = $("btn-open-ui");
-  const hint = $("ui-hint");
-  if (uiUrl) {
-    $(`ui-url-row`).classList.remove("hidden");
-    input.value = uiUrl;
-    openLink.href = uiUrl;
-    tag.textContent = "可访问";
-    hint.classList.remove("warn");
-    hint.textContent = "复制上方地址在浏览器打开（CBM 面板无法内嵌到当前页面）。";
-  } else {
-    input.value = "";
-    openLink.removeAttribute("href");
-    if (running && s.variant === "ui") {
-      tag.textContent = "代理未就绪";
-      hint.classList.add("warn");
-      hint.textContent = "可视化代理未就绪（可能端口被占用），远程暂无法访问。";
+  const uiCell = $("st-uiurl");
+  if (uiCell) {
+    if (uiUrl) {
+      uiCell.textContent = uiUrl;
+      uiCell.title = uiUrl + "（在浏览器打开；CBM 面板无法内嵌到当前页面）";
+      uiCell.classList.remove("off");
+    } else if (running && s.variant === "ui") {
+      uiCell.textContent = "代理未就绪";
+      uiCell.title = "可视化代理未就绪（可能端口被占用）";
+      uiCell.classList.add("off");
     } else if (running) {
-      tag.textContent = "标准版无面板";
-      hint.classList.remove("warn");
-      hint.textContent = "当前为标准版，无可视化面板。";
+      uiCell.textContent = "标准版无面板";
+      uiCell.title = "当前为标准版，无可视化面板";
+      uiCell.classList.remove("off");
     } else {
-      tag.textContent = installed ? "已停止" : "未安装";
-      hint.classList.remove("warn");
-      hint.textContent = installed
-        ? "CBM 未运行，启动后将在此显示可视化地址。"
-        : "尚未安装 CBM。";
+      uiCell.textContent = "—";
+      uiCell.title = installed ? "CBM 未运行" : "尚未安装 CBM";
+      uiCell.classList.remove("off");
     }
   }
-  if (copyBtn) copyBtn.disabled = !uiUrl;
-  if (openLink) openLink.classList.toggle("disabled", !uiUrl);
+}
+
+// --------------------------- 标签页 --------------------------- //
+function switchTab(name) {
+  document.querySelectorAll("#cbm-tabs .cbm-tab").forEach((el) => {
+    el.classList.toggle("active", el.dataset.tab === name);
+  });
+  document.querySelectorAll(".cbm-panels .cbm-panel").forEach((el) => {
+    el.classList.toggle("active", el.dataset.panel === name);
+  });
+  state.tab = name;
 }
 
 // --------------------------- 版本类型选择 --------------------------- //
@@ -189,6 +188,21 @@ function setVariant(v, persist = true) {
   document.querySelectorAll("#seg-variant .seg-item").forEach((el) => {
     el.classList.toggle("active", el.dataset.value === state.variant);
   });
+}
+
+// 用插件配置项（_conf_schema.json）作为 WebUI 的初始默认值。
+// 关系：配置项提供「默认 / 启动参数」，WebUI 操作是「本次即时操作」。
+function applyConfigDefaults(s) {
+  const d = s && s.defaults;
+  if (!d) return;
+  if (!state._defaultsApplied) {
+    if (d.variant && !s.installed) setVariant(d.variant, false);
+    state._defaultsApplied = true;
+  }
+  const mi = $("in-mirror");
+  if (mi && !mi.value && d.mirror) mi.value = d.mirror;
+  const port = $("in-port");
+  if (port && !port.value && d.port) port.value = d.port;
 }
 
 // --------------------------- 安装 --------------------------- //
@@ -270,27 +284,6 @@ async function doUninstall() {
   } finally {
     busy(btn, false);
   }
-}
-
-// --------------------------- 可视化 --------------------------- //
-function copyUiUrl() {
-  const input = $("ui-url-input");
-  if (!state.uiUrl) return;
-  let ok = false;
-  try {
-    input.select();
-    ok = document.execCommand("copy");
-  } catch (e) {
-    ok = false;
-  }
-  if (!ok && navigator.clipboard) {
-    navigator.clipboard.writeText(state.uiUrl).then(
-      () => toast("已复制可视化地址", "ok"),
-      () => toast("复制失败，请手动选择复制", "err"),
-    );
-    return;
-  }
-  toast(ok ? "已复制可视化地址" : "复制失败，请手动选择复制", ok ? "ok" : "err");
 }
 
 // --------------------------- 运行控制 --------------------------- //
@@ -408,16 +401,16 @@ function bind() {
   $("btn-install").addEventListener("click", doInstall);
   $("btn-reinstall").addEventListener("click", doInstall);
   $("btn-uninstall").addEventListener("click", doUninstall);
-  $("btn-open-ui").addEventListener("click", (e) => {
-    if (!state.uiUrl) e.preventDefault();
-  });
-  $("btn-copy-url").addEventListener("click", copyUiUrl);
   $("btn-load-logs").addEventListener("click", () => loadLogs(false));
   $("btn-clear-logs").addEventListener("click", clearLogs);
   $("auto-logs").addEventListener("change", (e) => setLogAutoRefresh(e.target.checked));
   $("btn-mcp-load").addEventListener("click", loadMcp);
   $("btn-mcp-copy").addEventListener("click", copyMcp);
   $("btn-mcp-add").addEventListener("click", addMcp);
+
+  document.querySelectorAll("#cbm-tabs .cbm-tab").forEach((el) => {
+    el.addEventListener("click", () => switchTab(el.dataset.tab));
+  });
 
   document.querySelectorAll("#seg-variant .seg-item").forEach((el) => {
     el.addEventListener("click", () => setVariant(el.dataset.value));
@@ -467,9 +460,9 @@ async function loadMirrorDefault() {
   if (!box || box.value) return;
   try {
     const v = await bridge.apiGet("status");
-    if (v && v.install_info && v.install_info.mirror) {
-      box.value = v.install_info.mirror;
-    }
+    const d = v && v.defaults;
+    if (d && d.mirror) box.value = d.mirror;
+    else if (v && v.install_info && v.install_info.mirror) box.value = v.install_info.mirror;
   } catch (e) {
     /* 忽略 */
   }

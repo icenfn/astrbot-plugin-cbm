@@ -38,106 +38,116 @@
         </div>
       </header>
 
-      <main class="cbm-grid">
-        <!-- 运行状态 -->
-        <section class="cbm-card span-2">
-          <div class="cbm-card-head">
-            <h2>运行状态</h2>
-            <span class="cbm-tag" id="variant-tag">—</span>
-          </div>
-          <div class="cbm-status-grid">
-            <div class="stat"><label>状态</label><value id="st-state">—</value></div>
-            <div class="stat"><label>版本</label><value id="st-version">—</value></div>
-            <div class="stat"><label>PID</label><value id="st-pid">—</value></div>
-            <div class="stat"><label>端口</label><value id="st-port">—</value></div>
-            <div class="stat"><label>数据目录</label><value id="st-cache" class="ellipsis">—</value></div>
-          </div>
-          <div class="cbm-row">
-            <button class="cbm-btn primary" id="btn-start">▶ 启动</button>
-            <button class="cbm-btn" id="btn-stop">■ 停止</button>
-            <button class="cbm-btn" id="btn-restart">⟳ 重启</button>
+      <nav class="cbm-tabs" id="cbm-tabs" role="tablist">
+        <button class="cbm-tab active" data-tab="overview" role="tab">概览</button>
+        <button class="cbm-tab" data-tab="install" role="tab">安装</button>
+        <button class="cbm-tab" data-tab="mcp" role="tab">MCP 接入</button>
+        <button class="cbm-tab" data-tab="logs" role="tab">日志</button>
+      </nav>
+
+      <main class="cbm-panels">
+        <!-- 概览 -->
+        <section class="cbm-panel active" data-panel="overview">
+          <div class="cbm-grid">
+            <section class="cbm-card span-2">
+              <div class="cbm-card-head">
+                <h2>运行状态</h2>
+                <span class="cbm-tag" id="variant-tag">—</span>
+              </div>
+              <div class="cbm-status-grid">
+                <div class="stat"><label>状态</label><value id="st-state">—</value></div>
+                <div class="stat"><label>版本</label><value id="st-version">—</value></div>
+                <div class="stat"><label>PID</label><value id="st-pid">—</value></div>
+                <div class="stat"><label>端口</label><value id="st-port">—</value></div>
+                <div class="stat"><label>数据目录</label><value id="st-cache" class="ellipsis">—</value></div>
+                <div class="stat"><label>WebUI 地址</label><value id="st-uiurl" class="ellipsis">—</value></div>
+              </div>
+              <div class="cbm-row">
+                <button class="cbm-btn primary" id="btn-start">▶ 启动</button>
+                <button class="cbm-btn" id="btn-stop">■ 停止</button>
+                <button class="cbm-btn" id="btn-restart">⟳ 重启</button>
+              </div>
+            </section>
           </div>
         </section>
 
-        <!-- WebUI 地址 -->
-        <section class="cbm-card span-2">
-          <div class="cbm-card-head">
-            <h2>WebUI 地址</h2>
-            <span class="cbm-tag" id="ui-state-tag">—</span>
+        <!-- 安装 -->
+        <section class="cbm-panel" data-panel="install">
+          <div class="cbm-grid">
+            <section class="cbm-card span-2">
+              <div class="cbm-card-head"><h2>安装 / 卸载</h2></div>
+              <div class="cbm-field">
+                <label>版本类型</label>
+                <div class="cbm-seg" id="seg-variant" role="tablist">
+                  <button class="seg-item active" data-value="ui">UI 版</button>
+                  <button class="seg-item" data-value="standard">标准版</button>
+                </div>
+                <p class="cbm-hint">标准版为无界面的 MCP 服务；UI 版额外提供 3D 知识图谱可视化面板。</p>
+              </div>
+              <div class="cbm-field">
+                <label>版本号</label>
+                <div class="cbm-input-row">
+                  <select id="in-version" class="cbm-select">
+                    <option value="latest">latest（最新稳定版）</option>
+                  </select>
+                  <button class="cbm-btn ghost mini" id="btn-reload-versions" title="重新获取版本列表">↻</button>
+                </div>
+                <p class="cbm-hint" id="version-hint">已安装：—</p>
+              </div>
+              <div class="cbm-field">
+                <label>下载镜像</label>
+                <div class="cbm-input-row">
+                  <input type="text" id="in-mirror" placeholder="https://gh-proxy.com/" />
+                </div>
+                <p class="cbm-hint">用于加速 GitHub Release 下载。留空则直连 GitHub。</p>
+              </div>
+              <div class="cbm-progress hidden" id="install-progress">
+                <div class="bar"><div class="bar-fill" id="bar-fill"></div></div>
+                <span id="progress-text">准备中…</span>
+              </div>
+              <div class="cbm-row">
+                <button class="cbm-btn primary" id="btn-install">安装</button>
+                <button class="cbm-btn hidden" id="btn-reinstall">重新安装 / 更新</button>
+                <button class="cbm-btn danger hidden" id="btn-uninstall">卸载</button>
+              </div>
+              <p class="cbm-hint" id="install-hint"></p>
+            </section>
           </div>
-          <div class="cbm-uiurl" id="ui-url-row">
-            <input type="text" id="ui-url-input" readonly />
-            <button class="cbm-btn ghost mini" id="btn-copy-url">复制</button>
-            <a class="cbm-btn ghost mini" id="btn-open-ui" target="_blank" rel="noopener noreferrer">打开 ↗</a>
-          </div>
-          <p class="cbm-hint" id="ui-hint">CBM 未运行，启动后将在此显示可视化地址。</p>
-        </section>
-
-        <!-- 安装 / 卸载 -->
-        <section class="cbm-card">
-          <div class="cbm-card-head"><h2>安装 / 卸载</h2></div>
-          <div class="cbm-field">
-            <label>版本类型</label>
-            <div class="cbm-seg" id="seg-variant" role="tablist">
-              <button class="seg-item active" data-value="ui">UI 版</button>
-              <button class="seg-item" data-value="standard">标准版</button>
-            </div>
-            <p class="cbm-hint">标准版为无界面的 MCP 服务；UI 版额外提供 3D 知识图谱可视化面板。</p>
-          </div>
-          <div class="cbm-field">
-            <label>版本号</label>
-            <div class="cbm-input-row">
-              <select id="in-version" class="cbm-select">
-                <option value="latest">latest（最新稳定版）</option>
-              </select>
-              <button class="cbm-btn ghost mini" id="btn-reload-versions" title="重新获取版本列表">↻</button>
-            </div>
-            <p class="cbm-hint" id="version-hint">已安装：—</p>
-          </div>
-          <div class="cbm-field">
-            <label>下载镜像</label>
-            <div class="cbm-input-row">
-              <input type="text" id="in-mirror" placeholder="https://gh-proxy.com/" />
-            </div>
-            <p class="cbm-hint">用于加速 GitHub Release 下载。留空则直连 GitHub。</p>
-          </div>
-          <div class="cbm-progress hidden" id="install-progress">
-            <div class="bar"><div class="bar-fill" id="bar-fill"></div></div>
-            <span id="progress-text">准备中…</span>
-          </div>
-          <div class="cbm-row">
-            <button class="cbm-btn primary" id="btn-install">安装</button>
-            <button class="cbm-btn hidden" id="btn-reinstall">重新安装 / 更新</button>
-            <button class="cbm-btn danger hidden" id="btn-uninstall">卸载</button>
-          </div>
-          <p class="cbm-hint" id="install-hint"></p>
         </section>
 
         <!-- MCP 接入 -->
-        <section class="cbm-card span-2">
-          <div class="cbm-card-head">
-            <h2>接入 AstrBot MCP</h2>
-            <div class="cbm-log-actions">
-              <button class="cbm-btn ghost mini" id="btn-mcp-load">读取配置</button>
-              <button class="cbm-btn ghost mini" id="btn-mcp-copy">复制</button>
-              <button class="cbm-btn primary mini" id="btn-mcp-add">一键添加到 AstrBot</button>
-            </div>
+        <section class="cbm-panel" data-panel="mcp">
+          <div class="cbm-grid">
+            <section class="cbm-card span-2">
+              <div class="cbm-card-head">
+                <h2>接入 AstrBot MCP</h2>
+                <div class="cbm-log-actions">
+                  <button class="cbm-btn ghost mini" id="btn-mcp-load">读取配置</button>
+                  <button class="cbm-btn ghost mini" id="btn-mcp-copy">复制</button>
+                  <button class="cbm-btn primary mini" id="btn-mcp-add">一键添加到 AstrBot</button>
+                </div>
+              </div>
+              <pre class="cbm-log cbm-mcp" id="mcp-snippet">尚未加载配置。</pre>
+              <p class="cbm-hint" id="mcp-status">将 CBM 作为 stdio MCP 服务写入 AstrBot 的 mcp_server.json；添加后可在「插件 → MCP」中查看，必要时重启生效。</p>
+            </section>
           </div>
-          <pre class="cbm-log cbm-mcp" id="mcp-snippet">尚未加载配置。</pre>
-          <p class="cbm-hint" id="mcp-status">将 CBM 作为 stdio MCP 服务写入 AstrBot 的 mcp_server.json；添加后可在「插件 → MCP」中查看，必要时重启生效。</p>
         </section>
 
         <!-- 日志 -->
-        <section class="cbm-card span-2">
-          <div class="cbm-card-head">
-            <h2>运行日志</h2>
-            <div class="cbm-log-actions">
-              <label class="cbm-check"><input type="checkbox" id="auto-logs" checked /><span>自动刷新</span></label>
-              <button class="cbm-btn ghost mini" id="btn-clear-logs">清除</button>
-              <button class="cbm-btn ghost mini" id="btn-load-logs">刷新</button>
-            </div>
+        <section class="cbm-panel" data-panel="logs">
+          <div class="cbm-grid">
+            <section class="cbm-card span-2">
+              <div class="cbm-card-head">
+                <h2>运行日志</h2>
+                <div class="cbm-log-actions">
+                  <label class="cbm-check"><input type="checkbox" id="auto-logs" checked /><span>自动刷新</span></label>
+                  <button class="cbm-btn ghost mini" id="btn-clear-logs">清除</button>
+                  <button class="cbm-btn ghost mini" id="btn-load-logs">刷新</button>
+                </div>
+              </div>
+              <pre class="cbm-log" id="log-box">尚未加载日志。</pre>
+            </section>
           </div>
-          <pre class="cbm-log" id="log-box">尚未加载日志。</pre>
         </section>
       </main>
     </div>

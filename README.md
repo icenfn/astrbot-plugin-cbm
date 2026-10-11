@@ -1,8 +1,8 @@
 # astrbot_plugin_cbm
 
-> 在 AstrBot WebUI 中一站式管理 **Codebase Memory MCP**（CBM）—— 面向 AI 编码代理的代码记忆 / 知识图谱引擎。
+> 在 AstrBot WebUI 中一站式管理 **Codebase Memory MCP**（CBM）—— 面向 AI 编码代理的代码记忆 / 知识图谱引擎，无需登录服务器敲命令。
 
-把 [DeusData/codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp) 的安装、运行与配置搬进 AstrBot 插件面板，无需登录服务器敲命令。
+面板采用 **标签页** 布局（概览 / 安装 / MCP 接入 / 日志）。
 
 ## ✨ 功能
 
@@ -26,13 +26,13 @@ git clone https://github.com/icenfn/astrbot-plugin-cbm
 
 ## 🚀 使用
 
-1. WebUI → **插件管理** → **Codebase Memory MCP 管理器** → 进入插件详情页。
-2. 打开 **「控制面板」**。
-3. 在 **安装 / 卸载** 卡片选择版本类型（默认 **UI 版**）与版本号，如需可修改 **下载镜像**，点击 **安装**。
-4. 安装完成后，在 **运行状态** 卡片点击 **启动**。
-5. UI 版启动后，**WebUI 地址** 卡片会显示可视化地址，点击 **打开 ↗** 或 **复制** 后在浏览器打开（面板无法内嵌到当前页面）。
-6. 在 **接入 AstrBot MCP** 卡片点击 **一键添加到 AstrBot**，即可把 CBM 写入 AstrBot 的 MCP 配置；也可 **复制** JSON 手动添加到「插件 → MCP」。重启 AstrBot 后生效。
-7. **运行日志** 卡片支持 **清除** 与 **自动刷新**（每 5 秒）。
+1. WebUI → **插件管理** → **Codebase Memory MCP 管理器** → 进入插件详情页 → 打开 **「控制面板」**。
+2. 面板顶部有 **概览 / 安装 / MCP 接入 / 日志** 四个标签页，按需切换。
+3. **安装** 页：选择版本类型（默认 **UI 版**）与版本号，如需可修改 **下载镜像**，点击 **安装**。
+4. **概览** 页：在 **运行状态** 卡片查看状态 / 版本 / PID / 端口 / 数据目录 / **WebUI 地址**，并 **启动 / 停止 / 重启**。
+5. UI 版启动后，**WebUI 地址** 会显示在运行状态卡片中，复制到浏览器打开即可（CBM 面板无法内嵌到当前页面）。
+6. **MCP 接入** 页：点击 **一键添加到 AstrBot** 把 CBM 写入 AstrBot 的 MCP 配置；也可 **复制** JSON 手动添加。重启 AstrBot 后生效。
+7. **日志** 页：查看运行日志，支持 **清除** 与 **自动刷新**（每 5 秒）。
 
 ## ⚙️ 插件配置（`_conf_schema.json`）
 
