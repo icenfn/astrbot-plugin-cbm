@@ -66,7 +66,7 @@ astrbot_plugin_cbm/
 ├── _conf_schema.json
 ├── requirements.txt     # 无第三方依赖（仅标准库）
 ├── logo.png
-└── pages/dashboard/     # 插件 WebUI 页面
+└── views/dashboard/     # 插件 WebUI 页面（兼容旧目录 pages/）
     ├── index.html
     ├── style.css
     └── app.js

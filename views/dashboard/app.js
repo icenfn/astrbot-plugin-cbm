@@ -1,7 +1,8 @@
 // astrbot_plugin_cbm —— 控制面板前端逻辑
-// 通过 window.AstrBotPluginPage bridge 调用插件后端 Web API。
+// 通过 window.AstrBotPluginView bridge 调用插件后端 Web API。
+// （兼容旧名 window.AstrBotPluginPage）
 
-const bridge = window.AstrBotPluginPage;
+const bridge = window.AstrBotPluginView || window.AstrBotPluginPage;
 
 const $ = (id) => document.getElementById(id);
 const state = { variant: "ui", tab: "overview", installPolling: null, uiUrl: null };
