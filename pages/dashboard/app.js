@@ -181,8 +181,9 @@ function switchTab(name) {
     el.classList.toggle("active", el.dataset.panel === name);
   });
   state.tab = name;
-  // 切到 MCP / 日志标签页时自动加载对应内容并启动自动刷新。
+  // 切到 MCP / 日志 / 安全标签页时自动加载对应内容并启动自动刷新。
   if (name === "mcp") loadMcp(true);
+  if (name === "security") loadAuth(true);
   if (name === "logs") loadLogs(true);
 }
 
@@ -355,6 +356,67 @@ async function addMcp() {
   }
 }
 
+// --------------------------- 安全（访问鉴权） --------------------------- //
+async function loadAuth(silent = false) {
+  try {
+    const a = await bridge.apiGet("auth");
+    const enabled = !!a.enabled;
+    const tag = $("auth-tag");
+    if (tag) {
+      tag.textContent = enabled
+        ? (a.proxy_running && a.proxy_auth_enabled ? "已启用" : "已启用（待生效）")
+        : "未启用";
+    }
+    // 仅在未编辑时用服务端值回填，避免轮询覆盖用户正在输入的内容。
+    const en = $("auth-enabled");
+    if (en && !state._authDirty) en.checked = enabled;
+    const un = $("auth-username");
+    if (un && !state._authDirty && !un.value) un.value = a.username || "";
+    const ph = $("auth-password");
+    if (ph) ph.placeholder = a.password_set ? "留空表示不修改已保存的密码" : "请输入密码";
+    const phint = $("auth-password-hint");
+    if (phint) phint.textContent = a.password_set ? "已设置密码（出于安全不显示明文）。" : "尚未设置密码。";
+    toggleAuthFields(enabled);
+  } catch (e) {
+    if (!silent) toast("读取鉴权配置失败：" + e.message, "err");
+  }
+}
+
+function toggleAuthFields(enabled) {
+  const un = $("auth-username");
+  const pw = $("auth-password");
+  [un, pw].forEach((el) => {
+    if (el) el.disabled = !enabled;
+  });
+}
+
+async function saveAuth() {
+  const enabled = $("auth-enabled").checked;
+  const username = $("auth-username").value.trim();
+  const password = $("auth-password").value;
+  if (enabled && !username) {
+    toast("启用访问鉴权时必须填写用户名", "err");
+    return;
+  }
+  const btn = $("btn-save-auth");
+  busy(btn, true);
+  try {
+    const res = await bridge.apiPost("auth/save", { enabled, username, password });
+    state._authDirty = false;
+    $("auth-password").value = "";
+    toast(
+      res.reloaded ? "鉴权配置已保存并生效" : "鉴权配置已保存（面板运行后生效）",
+      "ok",
+    );
+    await loadAuth(true);
+    refreshStatus();
+  } catch (e) {
+    toast("保存失败：" + e.message, "err");
+  } finally {
+    busy(btn, false);
+  }
+}
+
 // --------------------------- 日志 --------------------------- //
 async function loadLogs(silent = false) {
   const box = $("log-box");
@@ -393,6 +455,18 @@ function bind() {
   $("auto-logs").addEventListener("change", (e) => setLogAutoRefresh(e.target.checked));
   $("btn-mcp-copy").addEventListener("click", copyMcp);
   $("btn-mcp-add").addEventListener("click", addMcp);
+
+  // 安全标签页：任一输入变更即视为「已编辑」，避免轮询回填覆盖。
+  const markAuthDirty = () => {
+    state._authDirty = true;
+  };
+  $("auth-enabled").addEventListener("change", (e) => {
+    markAuthDirty();
+    toggleAuthFields(e.target.checked);
+  });
+  $("auth-username").addEventListener("input", markAuthDirty);
+  $("auth-password").addEventListener("input", markAuthDirty);
+  $("btn-save-auth").addEventListener("click", saveAuth);
 
   document.querySelectorAll("#cbm-tabs .cbm-tab").forEach((el) => {
     el.addEventListener("click", () => switchTab(el.dataset.tab));

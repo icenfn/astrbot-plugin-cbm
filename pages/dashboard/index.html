@@ -48,6 +48,7 @@
         <button class="cbm-tab active" data-tab="overview" role="tab">概览</button>
         <button class="cbm-tab" data-tab="install" role="tab">安装</button>
         <button class="cbm-tab" data-tab="mcp" role="tab">MCP 接入</button>
+        <button class="cbm-tab" data-tab="security" role="tab">安全</button>
         <button class="cbm-tab" data-tab="logs" role="tab">日志</button>
       </nav>
 
@@ -129,6 +130,44 @@
               </div>
               <pre class="cbm-log cbm-mcp" id="mcp-snippet">尚未加载配置。</pre>
               <p class="cbm-hint" id="mcp-status">将 CBM 作为 stdio MCP 服务写入 AstrBot 的 mcp_server.json；添加后可在「插件 → MCP」中查看，必要时重启生效。</p>
+            </section>
+          </div>
+        </section>
+
+        <!-- 安全 -->
+        <section class="cbm-panel" data-panel="security">
+          <div class="cbm-grid">
+            <section class="cbm-card span-2">
+              <div class="cbm-card-head">
+                <h2>访问鉴权（HTTP Basic Auth）</h2>
+                <span class="cbm-tag" id="auth-tag">—</span>
+              </div>
+              <p class="cbm-hint">
+                可视化反向代理默认监听 <code>0.0.0.0</code>，任何能访问该端口的人都可打开面板。
+                开启鉴权后需输入用户名与密码才能访问，适合将面板暴露在公网时使用。
+              </p>
+              <div class="cbm-field">
+                <label class="cbm-check"><input type="checkbox" id="auth-enabled" /><span>启用访问鉴权</span></label>
+              </div>
+              <div class="cbm-field">
+                <label>用户名</label>
+                <div class="cbm-input-row">
+                  <input type="text" id="auth-username" placeholder="admin" autocomplete="off" />
+                </div>
+              </div>
+              <div class="cbm-field">
+                <label>密码</label>
+                <div class="cbm-input-row">
+                  <input type="password" id="auth-password" placeholder="留空表示不修改已保存的密码" autocomplete="new-password" />
+                </div>
+                <p class="cbm-hint" id="auth-password-hint">尚未设置密码。</p>
+              </div>
+              <div class="cbm-row">
+                <button class="cbm-btn primary" id="btn-save-auth">保存并生效</button>
+              </div>
+              <p class="cbm-hint" id="auth-status">
+                保存后，若可视化面板正在运行，反向代理会自动重载使鉴权立即生效。
+              </p>
             </section>
           </div>
         </section>

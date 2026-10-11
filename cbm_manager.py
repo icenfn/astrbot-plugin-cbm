@@ -14,7 +14,9 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import hmac
 import json
 import os
 import platform
@@ -194,20 +196,68 @@ class UiProxy:
     CBM 的校验）。同时移除 CBM 响应里的 ``frame-ancestors 'none'``，便于按需内嵌。
     """
 
-    def __init__(self, host: str, port: int, target_port: int):
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        target_port: int,
+        auth_enabled: bool = False,
+        auth_username: str = "",
+        auth_password: str = "",
+    ):
         self.host = host
         self.port = int(port)
         self.target_port = int(target_port)
+        self.auth_enabled = bool(auth_enabled)
+        self.auth_username = auth_username or ""
+        self.auth_password = auth_password or ""
         self._httpd: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
 
+    @property
+    def auth_header(self) -> str:
+        """返回 Basic Auth 的 Authorization 头值（未启用鉴权时为空串）。"""
+        if not self.auth_enabled:
+            return ""
+        token = base64.b64encode(
+            f"{self.auth_username}:{self.auth_password}".encode("utf-8")
+        ).decode("ascii")
+        return f"Basic {token}"
+
     def _make_handler(self):
         target_port = self.target_port
+        auth_enabled = self.auth_enabled
+        auth_header = self.auth_header
 
         class _Handler(BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
 
+            def _authorized(self) -> bool:
+                """校验 HTTP Basic Auth；未启用鉴权时一律放行。"""
+                if not auth_enabled:
+                    return True
+                provided = self.headers.get("Authorization", "") or ""
+                # 常量时间比较，避免时序侧信道
+                return hmac.compare_digest(provided.strip(), auth_header)
+
+            def _deny(self) -> None:
+                body = "需要认证：请输入访问该面板的用户名与密码。".encode("utf-8")
+                self.send_response(401)
+                self.send_header(
+                    "WWW-Authenticate",
+                    'Basic realm="CBM WebUI", charset="UTF-8"',
+                )
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Connection", "close")
+                self.end_headers()
+                if self.command != "HEAD":
+                    self.wfile.write(body)
+
             def _proxy(self, method: str) -> None:  # noqa: ANN001
+                if not self._authorized():
+                    self._deny()
+                    return
                 target = f"http://127.0.0.1:{target_port}{self.path}"
                 body = None
                 length = self.headers.get("Content-Length")
@@ -287,12 +337,22 @@ class UiProxy:
 
     def start(self) -> dict[str, Any]:
         if self._httpd is not None:
-            return {"running": True, "host": self.host, "port": self.port}
+            return {
+                "running": True,
+                "host": self.host,
+                "port": self.port,
+                "auth_enabled": self.auth_enabled,
+            }
         self._httpd = ThreadingHTTPServer((self.host, self.port), self._make_handler())
         self._httpd.daemon_threads = True
         self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
         self._thread.start()
-        return {"running": True, "host": self.host, "port": self.port}
+        return {
+            "running": True,
+            "host": self.host,
+            "port": self.port,
+            "auth_enabled": self.auth_enabled,
+        }
 
     def stop(self) -> None:
         if self._httpd is not None:
@@ -408,19 +468,43 @@ class CbmManager:
         listen_host: str = DEFAULT_PROXY_HOST,
         listen_port: int = DEFAULT_PROXY_PORT,
         target_port: int | None = None,
+        auth: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """启动对外可视化反向代理；target 默认指向当前 UI 端口。"""
+        """启动对外可视化反向代理；target 默认指向当前 UI 端口。
+
+        ``auth`` 可传入 ``{"enabled": bool, "username": str, "password": str}``，
+        启用后访问代理需通过 HTTP Basic Auth 校验。
+        """
         target = int(target_port or self._proxy_target or DEFAULT_PORT)
+        auth = auth or {}
+        auth_enabled = bool(auth.get("enabled"))
+        auth_username = str(auth.get("username") or "")
+        auth_password = str(auth.get("password") or "")
         if self._proxy is not None and self._proxy.running:
-            if self._proxy.port == int(listen_port) and self._proxy.target_port == target:
+            unchanged = (
+                self._proxy.port == int(listen_port)
+                and self._proxy.target_port == target
+                and self._proxy.auth_enabled == auth_enabled
+                and self._proxy.auth_username == auth_username
+                and self._proxy.auth_password == auth_password
+            )
+            if unchanged:
                 return {
                     "running": True,
                     "host": self._proxy.host,
                     "port": self._proxy.port,
                     "target_port": target,
+                    "auth_enabled": auth_enabled,
                 }
             self.stop_proxy()
-        self._proxy = UiProxy(listen_host, int(listen_port), target)
+        self._proxy = UiProxy(
+            listen_host,
+            int(listen_port),
+            target,
+            auth_enabled=auth_enabled,
+            auth_username=auth_username,
+            auth_password=auth_password,
+        )
         self._proxy_target = target
         try:
             return self._proxy.start()
@@ -445,8 +529,50 @@ class CbmManager:
                 "host": self._proxy.host,
                 "port": self._proxy.port,
                 "target_port": self._proxy.target_port,
+                "auth_enabled": self._proxy.auth_enabled,
             }
-        return {"running": False, "host": None, "port": None, "target_port": None}
+        return {
+            "running": False,
+            "host": None,
+            "port": None,
+            "target_port": None,
+            "auth_enabled": False,
+        }
+
+    # ---------- 访问鉴权配置 ----------
+    def auth_config_path(self) -> Path:
+        return self.root / "auth.json"
+
+    def load_auth_config(self) -> dict[str, Any] | None:
+        """读取 WebUI「安全」标签页保存的鉴权配置；不存在时返回 None。"""
+        path = self.auth_config_path()
+        if not path.exists():
+            return None
+        try:
+            data = json.loads(path.read_text("utf-8"))
+        except Exception:
+            return None
+        if not isinstance(data, dict):
+            return None
+        return {
+            "enabled": bool(data.get("enabled")),
+            "username": str(data.get("username") or ""),
+            "password": str(data.get("password") or ""),
+        }
+
+    def save_auth_config(
+        self, enabled: bool, username: str, password: str
+    ) -> dict[str, Any]:
+        """持久化鉴权配置（写入插件数据目录，供反代在重启后继续生效）。"""
+        data = {
+            "enabled": bool(enabled),
+            "username": str(username or ""),
+            "password": str(password or ""),
+        }
+        path = self.auth_config_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), "utf-8")
+        return data
 
     # ---------- 版本解析 ----------
     def get_latest_version(self) -> str:

@@ -2,7 +2,7 @@ name: astrbot_plugin_cbm
 display_name: Codebase Memory MCP 管理器
 short_desc: 在 WebUI 中一键安装、运行、接入 Codebase Memory MCP
 desc: |
-  面板化管理 codebase-memory-mcp（CBM）——面向 AI 编码代理的代码记忆 / 知识图谱引擎。支持选择 UI 版或标准版、指定版本、镜像加速下载并校验 SHA-256；启动 / 停止 / 重启与状态查看；内置反向代理供远程打开可视化面板；一键把 CBM 写入 AstrBot 的 MCP 配置；日志查看与自动刷新。在插件详情页打开控制面板即可使用。
+  面板化管理 codebase-memory-mcp（CBM）——面向 AI 编码代理的代码记忆 / 知识图谱引擎。支持选择 UI 版或标准版、指定版本、镜像加速下载并校验 SHA-256；启动 / 停止 / 重启与状态查看；内置反向代理供远程打开可视化面板，并可开启 HTTP Basic Auth 访问鉴权；一键把 CBM 写入 AstrBot 的 MCP 配置；日志查看与自动刷新。在插件详情页打开控制面板即可使用。
 version: 1.0.0
 author: icenfn
 repo: https://github.com/icenfn/astrbot-plugin-cbm

@@ -130,6 +130,17 @@ class CbmPlugin(Star):
         except (TypeError, ValueError):
             return default
 
+    def _auth_settings(self) -> dict:
+        """解析生效的访问鉴权配置：控制面板「安全」标签页的保存值优先，其次插件配置项。"""
+        saved = self.manager.load_auth_config()
+        if saved is not None:
+            return saved
+        return {
+            "enabled": self._cfg_bool("ui_proxy_auth_enabled", False),
+            "username": str(self._cfg("ui_proxy_auth_username", "admin") or "admin"),
+            "password": str(self._cfg("ui_proxy_auth_password", "") or ""),
+        }
+
     # ------------------------------------------------------------------ #
     # Web API 注册
     # ------------------------------------------------------------------ #
@@ -147,6 +158,8 @@ class CbmPlugin(Star):
             (f"{P}/logs", self.api_logs, ["GET"], "读取运行日志"),
             (f"{P}/mcp", self.api_mcp_config, ["GET"], "获取 MCP 接入配置"),
             (f"{P}/mcp/add", self.api_mcp_add, ["POST"], "写入 AstrBot MCP 配置"),
+            (f"{P}/auth", self.api_auth_get, ["GET"], "读取面板访问鉴权配置"),
+            (f"{P}/auth/save", self.api_auth_save, ["POST"], "保存面板访问鉴权配置"),
         ]
         for route, handler, methods, desc in routes:
             self.context.register_web_api(route, handler, methods, desc)
@@ -173,10 +186,14 @@ class CbmPlugin(Star):
             return {"running": False}
         host = str(self._cfg("ui_proxy_host", DEFAULT_PROXY_HOST) or DEFAULT_PROXY_HOST)
         proxy_port = self._cfg_int("ui_proxy_port", DEFAULT_PROXY_PORT)
-        info = await self._call(self.manager.start_proxy, host, proxy_port, int(port))
+        auth = self._auth_settings()
+        info = await self._call(
+            self.manager.start_proxy, host, proxy_port, int(port), auth
+        )
         if info.get("running"):
             logger.info(
                 f"CBM 可视化反代已就绪：{info.get('host')}:{info.get('port')} -> 127.0.0.1:{port}"
+                + ("（已启用访问鉴权）" if info.get("auth_enabled") else "")
             )
         elif info.get("error"):
             logger.warning(f"CBM 可视化反代启动失败：{info.get('error')}")
@@ -224,6 +241,10 @@ class CbmPlugin(Star):
                 "auto_start": self._cfg_bool("auto_start", False),
                 "stop_on_unload": self._cfg_bool("stop_on_unload", True),
                 "purge_data_on_uninstall": self._cfg_bool("purge_data_on_uninstall", False),
+                "ui_proxy_auth_enabled": self._cfg_bool("ui_proxy_auth_enabled", False),
+                "ui_proxy_auth_username": str(
+                    self._cfg("ui_proxy_auth_username", "admin") or "admin"
+                ),
             },
         }
         try:
@@ -355,6 +376,71 @@ class CbmPlugin(Star):
             return self._err(exc)
         logger.info(f"CBM 已重启：variant={variant} port={port}")
         return json_response({"ok": True, **data, "ui_proxy": proxy})
+
+    # ------------------------------------------------------------------ #
+    # 访问鉴权（面板「安全」标签页）
+    # ------------------------------------------------------------------ #
+    async def api_auth_get(self):
+        """返回当前生效的访问鉴权配置（不返回明文密码，仅返回是否已设置）。"""
+        settings = self._auth_settings()
+        proxy = self.manager.proxy_info()
+        return json_response(
+            {
+                "enabled": bool(settings.get("enabled")),
+                "username": str(settings.get("username") or ""),
+                "password_set": bool(settings.get("password")),
+                "proxy_running": bool(proxy.get("running")),
+                "proxy_auth_enabled": bool(proxy.get("auth_enabled")),
+            }
+        )
+
+    async def api_auth_save(self):
+        """保存访问鉴权配置；若反代正在运行，则热重载使其立即生效。"""
+        payload = await request.json(default={})
+        enabled = bool(payload.get("enabled"))
+        username = str(payload.get("username") or "").strip()
+        password = payload.get("password")
+
+        current = self._auth_settings()
+        if password is None or password == "":
+            # 未填写新密码：沿用已保存的密码
+            password = str(current.get("password") or "")
+        password = str(password)
+
+        if enabled:
+            if not username:
+                return error_response("启用访问鉴权时必须填写用户名")
+            if not password:
+                return error_response("启用访问鉴权时必须填写密码")
+
+        try:
+            await self._call(
+                self.manager.save_auth_config, enabled, username, password
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._err(exc)
+
+        # 反代正在运行时热重载，使新的鉴权配置立即生效。
+        reloaded = False
+        status = self.manager.status()
+        if (
+            status.get("running")
+            and status.get("variant") == "ui"
+            and status.get("port")
+        ):
+            try:
+                await self._call(self.manager.stop_proxy)
+                await self._start_proxy_if_ui("ui", int(status["port"]))
+                reloaded = True
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"重载可视化反代鉴权失败：{exc}")
+
+        logger.info(
+            f"面板访问鉴权已保存：enabled={enabled} username={username or '-'} reloaded={reloaded}"
+        )
+        return json_response(
+            {"ok": True, "enabled": enabled, "reloaded": reloaded}
+        )
 
     # ------------------------------------------------------------------ #
     # MCP 接入 AstrBot

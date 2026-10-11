@@ -80,7 +80,8 @@ body {
   border: 1px solid var(--border); padding: 3px 10px; border-radius: 999px;
 }
 
-.cbm-status-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; margin-bottom: 16px; }
+.cbm-status-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; }
+.cbm-status-grid .stat:last-child:nth-child(3n+1) { grid-column: 1 / -1; }
 @media (max-width: 620px) { .cbm-status-grid { grid-template-columns: 1fr; } }
 .stat {
   background: var(--panel-soft); border: 1px solid var(--border);
@@ -154,12 +155,24 @@ body {
 
 .hidden { display: none !important; }
 
-/* 顶部控制栏（位于标签页之外） */
-.cbm-runbar { display: flex; gap: 10px; margin: 16px 0 2px; flex-wrap: wrap; }
+/* 顶部控制栏（位于标签页之外，做成独立工具条） */
+.cbm-runbar {
+  display: flex; align-items: center; gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 6px;
+  padding: 10px 12px;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.cbm-runbar .cbm-btn { min-width: 88px; justify-content: center; }
+@media (max-width: 620px) {
+  .cbm-runbar { gap: 8px; }
+  .cbm-runbar .cbm-btn { flex: 1 1 0; min-width: 0; }
+}
 
 /* 标签页导航 */
 .cbm-tabs {
-  display: flex; gap: 4px; margin: 18px 0 16px;
+  display: flex; gap: 4px; margin: 16px 0 16px;
   border-bottom: 1px solid var(--border); overflow-x: auto;
 }
 .cbm-tab {

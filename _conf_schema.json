@@ -42,6 +42,24 @@
     "default": 9750,
     "hint": "对外访问可视化面板的端口。请确保开放防火墙；需与 CBM 的 UI 端口不同。默认 9750。"
   },
+  "ui_proxy_auth_enabled": {
+    "description": "启用访问鉴权（HTTP Basic Auth）",
+    "type": "bool",
+    "default": false,
+    "hint": "为可视化反向代理开启 HTTP Basic Auth。开启后访问面板需输入用户名/密码，避免暴露在公网时被无密码访问。也可在插件控制面板的「安全」标签页中即时修改。"
+  },
+  "ui_proxy_auth_username": {
+    "description": "访问鉴权用户名",
+    "type": "string",
+    "default": "admin",
+    "hint": "启用访问鉴权时使用的用户名。"
+  },
+  "ui_proxy_auth_password": {
+    "description": "访问鉴权密码",
+    "type": "string",
+    "default": "",
+    "hint": "启用访问鉴权时使用的密码。留空则鉴权不生效；建议在控制面板的「安全」标签页中设置。"
+  },
   "auto_start": {
     "description": "随插件自动启动",
     "type": "bool",
