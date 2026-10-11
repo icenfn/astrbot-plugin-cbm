@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Codebase Memory MCP 控制面板</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="cbm-shell">
+      <header class="cbm-header">
+        <div class="cbm-brand">
+          <div class="cbm-logo" aria-hidden="true">
+            <svg viewBox="0 0 48 48" width="30" height="30">
+              <defs>
+                <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stop-color="#5b8def" />
+                  <stop offset="1" stop-color="#8b5cf6" />
+                </linearGradient>
+              </defs>
+              <g fill="none" stroke="url(#g)" stroke-width="3" stroke-linecap="round">
+                <path d="M14 16h20M14 24h20M14 32h20" />
+                <circle cx="24" cy="16" r="3.4" fill="url(#g)" stroke="none" />
+                <circle cx="16" cy="24" r="3.4" fill="url(#g)" stroke="none" />
+                <circle cx="32" cy="24" r="3.4" fill="url(#g)" stroke="none" />
+                <circle cx="24" cy="32" r="3.4" fill="url(#g)" stroke="none" />
+              </g>
+            </svg>
+          </div>
+          <div>
+            <h1>Codebase Memory MCP</h1>
+            <p class="cbm-sub" id="subtitle">加载中…</p>
+          </div>
+        </div>
+        <div class="cbm-header-actions">
+          <span class="cbm-pill" id="run-pill"><i class="dot"></i><span id="run-pill-text">未知</span></span>
+          <button class="cbm-btn ghost" id="btn-refresh" title="刷新">↻ 刷新</button>
+        </div>
+      </header>
+
+      <main class="cbm-grid">
+        <!-- 运行状态 -->
+        <section class="cbm-card span-2">
+          <div class="cbm-card-head">
+            <h2>运行状态</h2>
+            <span class="cbm-tag" id="variant-tag">—</span>
+          </div>
+          <div class="cbm-status-grid">
+            <div class="stat"><label>状态</label><value id="st-state">—</value></div>
+            <div class="stat"><label>版本</label><value id="st-version">—</value></div>
+            <div class="stat"><label>PID</label><value id="st-pid">—</value></div>
+            <div class="stat"><label>端口</label><value id="st-port">—</value></div>
+            <div class="stat"><label>运行时长</label><value id="st-uptime">—</value></div>
+            <div class="stat"><label>数据目录</label><value id="st-cache" class="ellipsis">—</value></div>
+          </div>
+          <div class="cbm-row">
+            <button class="cbm-btn primary" id="btn-start">▶ 启动</button>
+            <button class="cbm-btn" id="btn-stop">■ 停止</button>
+            <button class="cbm-btn" id="btn-restart">⟳ 重启</button>
+            <a class="cbm-btn ghost hidden" id="link-ui" target="_blank" rel="noopener">打开可视化 ↗</a>
+          </div>
+        </section>
+
+        <!-- 安装 / 卸载 -->
+        <section class="cbm-card">
+          <div class="cbm-card-head"><h2>安装 / 卸载</h2></div>
+          <div class="cbm-field">
+            <label>版本类型</label>
+            <div class="cbm-seg" id="seg-variant" role="tablist">
+              <button class="seg-item active" data-value="standard">标准版</button>
+              <button class="seg-item" data-value="ui">UI 版</button>
+            </div>
+            <p class="cbm-hint">标准版为无界面的 MCP 服务；UI 版额外提供 3D 知识图谱可视化面板。</p>
+          </div>
+          <div class="cbm-field">
+            <label>版本号</label>
+            <div class="cbm-input-row">
+              <input type="text" id="in-version" placeholder="latest 或具体版本，如 0.11.0" value="latest" />
+            </div>
+            <p class="cbm-hint" id="version-hint">已安装：—</p>
+          </div>
+          <div class="cbm-progress hidden" id="install-progress">
+            <div class="bar"><div class="bar-fill" id="bar-fill"></div></div>
+            <span id="progress-text">准备中…</span>
+          </div>
+          <div class="cbm-row">
+            <button class="cbm-btn primary" id="btn-install">安装 / 更新</button>
+            <button class="cbm-btn danger" id="btn-uninstall">卸载</button>
+          </div>
+        </section>
+
+        <!-- 配置管理 -->
+        <section class="cbm-card span-2">
+          <div class="cbm-card-head">
+            <h2>CBM 配置</h2>
+            <button class="cbm-btn ghost" id="btn-load-config">读取</button>
+          </div>
+          <div id="config-list" class="cbm-config-list">
+            <p class="cbm-empty">点击“读取”加载当前配置。</p>
+          </div>
+        </section>
+
+        <!-- 日志 -->
+        <section class="cbm-card span-2">
+          <div class="cbm-card-head">
+            <h2>运行日志</h2>
+            <button class="cbm-btn ghost" id="btn-load-logs">刷新日志</button>
+          </div>
+          <pre class="cbm-log" id="log-box">尚未加载日志。</pre>
+        </section>
+      </main>
+    </div>
+
+    <div class="cbm-toast-wrap" id="toasts"></div>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,51 @@
+{
+  "variant": {
+    "description": "CBM 版本类型",
+    "type": "string",
+    "options": ["standard", "ui"],
+    "default": "standard",
+    "hint": "standard = 无界面的标准版（stdio MCP 服务）；ui = 内置 3D 知识图谱可视化面板的 UI 版（额外提供 HTTP 服务）。若已安装则切换版本需要重新安装。"
+  },
+  "version": {
+    "description": "CBM 版本",
+    "type": "string",
+    "default": "latest",
+    "hint": "填 latest 使用最新稳定版；也可指定具体版本号，例如 0.11.0。"
+  },
+  "mirror": {
+    "description": "下载加速镜像",
+    "type": "string",
+    "default": "",
+    "hint": "可选。用于加速 GitHub Release 下载，例如 https://ghproxy.net/ 。留空则直连 GitHub。支持 {url} 占位符。"
+  },
+  "cache_dir": {
+    "description": "数据缓存目录",
+    "type": "string",
+    "default": "",
+    "hint": "可选。CBM 索引数据库的存放目录（对应环境变量 CBM_CACHE_DIR）。留空使用默认 ~/.cache/codebase-memory-mcp。"
+  },
+  "port": {
+    "description": "UI 服务端口",
+    "type": "int",
+    "default": 9749,
+    "hint": "UI 版 HTTP 可视化服务的监听端口。默认 9749。"
+  },
+  "auto_start": {
+    "description": "随插件自动启动",
+    "type": "bool",
+    "default": false,
+    "hint": "插件加载时自动启动 CBM 服务。"
+  },
+  "stop_on_unload": {
+    "description": "卸载插件时停止服务",
+    "type": "bool",
+    "default": true,
+    "hint": "禁用或卸载本插件时，自动停止由本插件启动的 CBM 进程。"
+  },
+  "purge_data_on_uninstall": {
+    "description": "卸载 CBM 时删除索引数据",
+    "type": "bool",
+    "default": false,
+    "hint": "卸载 CBM 二进制时，是否一并删除缓存目录中的索引数据库。"
+  }
+}
