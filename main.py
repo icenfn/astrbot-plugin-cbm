@@ -58,6 +58,8 @@ CbmManager = core.CbmManager
 CbmError = core.CbmError
 DEFAULT_PORT = core.DEFAULT_PORT
 DEFAULT_MIRROR = core.DEFAULT_MIRROR
+DEFAULT_PROXY_HOST = core.DEFAULT_PROXY_HOST
+DEFAULT_PROXY_PORT = core.DEFAULT_PROXY_PORT
 KNOWN_CONFIG = core.KNOWN_CONFIG
 VARIANTS = core.VARIANTS
 
@@ -87,8 +89,21 @@ class CbmPlugin(Star):
 
         self._register_web_apis()
 
+        # 若 CBM 已在运行，补挂可视化反向代理（插件热重载场景）
+        self._schedule(self._sync_ui_proxy())
+
         if self._cfg_bool("auto_start", False):
-            asyncio.create_task(self._auto_start())
+            self._schedule(self._auto_start())
+
+    @staticmethod
+    def _schedule(coro) -> None:
+        """在事件循环中调度协程；无运行中的循环时（如单元测试同步构造）安全跳过。"""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            coro.close()
+            return
+        loop.create_task(coro)
 
     # ------------------------------------------------------------------ #
     # 配置便捷读取
@@ -150,6 +165,33 @@ class CbmPlugin(Star):
         return error_response(f"操作失败: {exc}", status_code=500)
 
     # ------------------------------------------------------------------ #
+    # UI 反向代理
+    # ------------------------------------------------------------------ #
+    async def _start_proxy_if_ui(self, variant: str, port: int) -> dict:
+        """UI 版启动后，把仅监听 127.0.0.1 的可视化面板通过代理对外暴露。"""
+        if variant != "ui":
+            return {"running": False}
+        host = str(self._cfg("ui_proxy_host", DEFAULT_PROXY_HOST) or DEFAULT_PROXY_HOST)
+        proxy_port = self._cfg_int("ui_proxy_port", DEFAULT_PROXY_PORT)
+        info = await self._call(self.manager.start_proxy, host, proxy_port, int(port))
+        if info.get("running"):
+            logger.info(
+                f"CBM 可视化反代已就绪：{info.get('host')}:{info.get('port')} -> 127.0.0.1:{port}"
+            )
+        elif info.get("error"):
+            logger.warning(f"CBM 可视化反代启动失败：{info.get('error')}")
+        return info
+
+    async def _sync_ui_proxy(self) -> None:
+        """插件加载时，如果 CBM 已在运行，补挂反向代理。"""
+        try:
+            status = await self._call(self.manager.status)
+            if status.get("running") and status.get("variant") == "ui" and status.get("port"):
+                await self._start_proxy_if_ui("ui", int(status["port"]))
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(f"同步 CBM 反向代理失败: {exc}")
+
+    # ------------------------------------------------------------------ #
     # 状态
     # ------------------------------------------------------------------ #
     async def api_status(self):
@@ -196,6 +238,10 @@ class CbmPlugin(Star):
         if self._install_job.get("running"):
             return error_response("已有安装任务正在进行", status_code=409)
 
+        logger.info(
+            f"CBM 开始安装：variant={variant} version={version} mirror={mirror or '(直连 GitHub)'}"
+        )
+
         self._install_job = {
             "running": True,
             "phase": "准备中",
@@ -226,6 +272,9 @@ class CbmPlugin(Star):
             except Exception as exc:  # noqa: BLE001
                 self._install_job["error"] = str(getattr(exc, "message", exc))
                 self._install_job["phase"] = "失败"
+                logger.error(f"CBM 安装失败：{self._install_job['error']}")
+            else:
+                logger.info("CBM 安装完成")
             finally:
                 self._install_job["running"] = False
 
@@ -267,26 +316,33 @@ class CbmPlugin(Star):
         variant, port, cache_dir = await self._resolve_run_options(payload)
         try:
             data = await self._call(self.manager.start, variant, port, cache_dir)
+            proxy = await self._start_proxy_if_ui(variant, port)
         except Exception as exc:  # noqa: BLE001
             return self._err(exc)
-        return json_response({"ok": True, **data})
+        logger.info(f"CBM 已启动：variant={variant} port={port} proxy={proxy.get('running')}")
+        return json_response({"ok": True, **data, "ui_proxy": proxy})
 
     async def api_stop(self):
         try:
+            await self._call(self.manager.stop_proxy)
             data = await self._call(self.manager.stop)
         except Exception as exc:  # noqa: BLE001
             return self._err(exc)
+        logger.info("CBM 已停止")
         return json_response({"ok": True, **data})
 
     async def api_restart(self):
         payload = await request.json(default={})
         variant, port, cache_dir = await self._resolve_run_options(payload)
         try:
+            await self._call(self.manager.stop_proxy)
             self.manager.stop()
             data = await self._call(self.manager.start, variant, port, cache_dir)
+            proxy = await self._start_proxy_if_ui(variant, port)
         except Exception as exc:  # noqa: BLE001
             return self._err(exc)
-        return json_response({"ok": True, **data})
+        logger.info(f"CBM 已重启：variant={variant} port={port}")
+        return json_response({"ok": True, **data, "ui_proxy": proxy})
 
     # ------------------------------------------------------------------ #
     # 配置
@@ -328,8 +384,17 @@ class CbmPlugin(Star):
     # 日志
     # ------------------------------------------------------------------ #
     async def api_logs(self):
-        lines = request.query.get("lines", 200, type=int)
-        text = await self._call(self.manager.read_logs, int(lines or 200))
+        lines = int(request.query.get("lines", 200, type=int) or 200)
+        status = self.manager.status()
+        # UI 版运行中：CBM 的 stdout 基本为空，真正的日志在 UI 的 /api/logs。
+        if status.get("running") and status.get("variant") == "ui" and status.get("port"):
+            try:
+                text = await self._call(self.manager.read_ui_logs, int(status["port"]), lines)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"读取 CBM UI 日志失败，回退文件日志：{exc}")
+                text = await self._call(self.manager.read_logs, lines)
+        else:
+            text = await self._call(self.manager.read_logs, lines)
         return json_response({"lines": text})
 
     # ------------------------------------------------------------------ #
@@ -337,12 +402,15 @@ class CbmPlugin(Star):
     # ------------------------------------------------------------------ #
     async def _auto_start(self) -> None:
         try:
-            if self.manager.is_installed() and not self.manager.is_running():
-                variant = self._cfg("variant", "ui")
-                port = self._cfg_int("port", DEFAULT_PORT)
-                cache_dir = self._cfg("cache_dir", "") or None
+            if not self.manager.is_installed():
+                return
+            variant = self._cfg("variant", "ui")
+            port = self._cfg_int("port", DEFAULT_PORT)
+            cache_dir = self._cfg("cache_dir", "") or None
+            if not self.manager.is_running():
                 await self._call(self.manager.start, variant, port, cache_dir)
                 logger.info("CBM 已随插件自动启动")
+            await self._start_proxy_if_ui(variant, port)
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"CBM 自动启动失败: {exc}")
 
@@ -350,6 +418,7 @@ class CbmPlugin(Star):
         """插件被卸载 / 停用时调用。"""
         if self._cfg_bool("stop_on_unload", True):
             try:
+                await asyncio.to_thread(self.manager.stop_proxy)
                 await asyncio.to_thread(self.manager.stop)
                 logger.info("CBM 已随插件卸载而停止")
             except Exception as exc:  # noqa: BLE001

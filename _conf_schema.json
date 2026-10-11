@@ -28,7 +28,19 @@
     "description": "UI 服务端口",
     "type": "int",
     "default": 9749,
-    "hint": "UI 版 HTTP 可视化服务的监听端口。默认 9749。"
+    "hint": "UI 版 HTTP 可视化服务的监听端口（仅本机 127.0.0.1）。默认 9749。"
+  },
+  "ui_proxy_host": {
+    "description": "可视化反向代理监听地址",
+    "type": "string",
+    "default": "0.0.0.0",
+    "hint": "CBM 面板只监听 127.0.0.1，远程无法直连；此代理将其对外暴露。默认 0.0.0.0（监听所有网卡），也可填具体网卡 IP。"
+  },
+  "ui_proxy_port": {
+    "description": "可视化反向代理端口",
+    "type": "int",
+    "default": 9750,
+    "hint": "对外访问可视化面板的端口。请确保开放防火墙；需与 CBM 的 UI 端口不同。默认 9750。"
   },
   "auto_start": {
     "description": "随插件自动启动",

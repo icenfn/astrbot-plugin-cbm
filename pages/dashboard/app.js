@@ -4,7 +4,7 @@
 const bridge = window.AstrBotPluginPage;
 
 const $ = (id) => document.getElementById(id);
-const state = { variant: "ui", installPolling: null };
+const state = { variant: "ui", installPolling: null, uiUrl: null };
 
 // --------------------------- 通用工具 --------------------------- //
 function toast(msg, type = "") {
@@ -20,24 +20,63 @@ function toast(msg, type = "") {
   }, 3200);
 }
 
-function fmtUptime(sec) {
-  if (!sec && sec !== 0) return "—";
-  sec = Math.floor(sec);
-  const d = Math.floor(sec / 86400);
-  const h = Math.floor((sec % 86400) / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const s = sec % 60;
-  const parts = [];
-  if (d) parts.push(d + " 天");
-  if (h) parts.push(h + " 小时");
-  if (m) parts.push(m + " 分");
-  if (!d && !h) parts.push(s + " 秒");
-  return parts.join(" ");
-}
-
 function busy(btn, on) {
   if (!btn) return;
   btn.disabled = on;
+}
+
+// --------------------------- 二次确认弹窗 --------------------------- //
+// AstrBot 插件页面运行在受限 iframe 中，原生 confirm() 常被拦截，改用自定义 modal。
+function confirmModal({ title, message, okText = "确定", cancelText = "取消", danger = true, checkbox = null }) {
+  return new Promise((resolve) => {
+    const mask = $("modal-mask");
+    $("modal-title").textContent = title || "确认";
+    $("modal-body").textContent = message || "";
+    const ok = $("modal-ok");
+    ok.textContent = okText;
+    ok.className = "cbm-btn " + (danger ? "danger" : "primary");
+    $("modal-cancel").textContent = cancelText;
+
+    const wrap = $("modal-check-wrap");
+    const chk = $("modal-check");
+    if (checkbox) {
+      wrap.classList.remove("hidden");
+      $("modal-check-label").textContent = checkbox.label;
+      chk.checked = !!checkbox.checked;
+    } else {
+      wrap.classList.add("hidden");
+      chk.checked = false;
+    }
+
+    mask.classList.remove("hidden");
+
+    const cleanup = () => {
+      mask.classList.add("hidden");
+      ok.removeEventListener("click", onOk);
+      $("modal-cancel").removeEventListener("click", onCancel);
+      mask.removeEventListener("click", onMask);
+      document.removeEventListener("keydown", onKey);
+    };
+    const onOk = () => {
+      cleanup();
+      resolve({ ok: true, checked: chk.checked });
+    };
+    const onCancel = () => {
+      cleanup();
+      resolve({ ok: false, checked: false });
+    };
+    const onMask = (e) => {
+      if (e.target === mask) onCancel();
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") onCancel();
+    };
+
+    ok.addEventListener("click", onOk);
+    $("modal-cancel").addEventListener("click", onCancel);
+    mask.addEventListener("click", onMask);
+    document.addEventListener("keydown", onKey);
+  });
 }
 
 // --------------------------- 状态渲染 --------------------------- //
@@ -51,40 +90,35 @@ async function refreshStatus() {
   }
 }
 
+function buildUiUrl(s) {
+  if (!s.ui_proxy || !s.ui_proxy.running || !s.ui_proxy.port) return null;
+  const host = location.hostname || "127.0.0.1";
+  return `http://${host}:${s.ui_proxy.port}/`;
+}
+
 function renderStatus(s) {
   const running = !!s.running;
+  const installed = !!s.installed;
+
   const pill = $("run-pill");
   pill.classList.toggle("on", running);
-  pill.classList.toggle("off", !running && s.installed);
-  $("run-pill-text").textContent = running
-    ? "运行中"
-    : s.installed
-      ? "已停止"
-      : "未安装";
+  pill.classList.toggle("off", !running && installed);
+  $("run-pill-text").textContent = running ? "运行中" : installed ? "已停止" : "未安装";
 
   const st = $("st-state");
-  st.textContent = running ? "运行中" : s.installed ? "已停止" : "未安装";
-  st.className = running ? "ok" : s.installed ? "" : "off";
+  st.textContent = running ? "运行中" : installed ? "已停止" : "未安装";
+  st.className = running ? "ok" : installed ? "" : "off";
 
   $("st-version").textContent = s.binary_version || "—";
   $("st-pid").textContent = running && s.pid ? s.pid : "—";
   $("st-port").textContent = s.port || "—";
-  $("st-uptime").textContent = running ? fmtUptime(s.uptime) : "—";
   $("st-cache").textContent = s.cache_dir || "—";
   $("st-cache").title = s.cache_dir || "";
 
   const vt = s.variant ? (s.variant === "ui" ? "UI 版" : "标准版") : "—";
-  $("variant-tag").textContent = s.installed ? vt : "未安装";
+  $("variant-tag").textContent = installed ? vt : "未安装";
 
-  const uiLink = $("link-ui");
-  if (running && s.variant === "ui" && s.ui_url) {
-    uiLink.href = s.ui_url;
-    uiLink.classList.remove("hidden");
-  } else {
-    uiLink.classList.add("hidden");
-  }
-
-  $("subtitle").textContent = s.installed
+  $("subtitle").textContent = installed
     ? `已安装 v${s.binary_version || "?"} · ${s.platform.os}/${s.platform.arch}`
     : "尚未安装 CBM";
 
@@ -98,12 +132,41 @@ function renderStatus(s) {
       (info.sha256_verified ? "（SHA-256 已校验）" : "")
     : "已安装：—";
 
+  // 安装 / 卸载 分开显示：未安装 -> 安装；已安装 -> 重新安装 / 更新 + 卸载
+  $("btn-install").classList.toggle("hidden", installed);
+  $("btn-reinstall").classList.toggle("hidden", !installed);
+  $("btn-uninstall").classList.toggle("hidden", !installed);
+  $("install-hint").textContent = installed
+    ? "已安装。可重新安装 / 更新以切换版本或版本类型。"
+    : "尚未安装，点击“安装”即可下载。";
+
   // 按钮可用性
-  const hasInstalled = !!s.installed;
-  $("btn-start").disabled = !hasInstalled || running;
+  $("btn-start").disabled = !installed || running;
   $("btn-stop").disabled = !running;
-  $("btn-restart").disabled = !hasInstalled;
-  $("btn-uninstall").disabled = !hasInstalled;
+  $("btn-restart").disabled = !installed;
+
+  // 可视化地址（经插件反向代理对外暴露；CBM 自身仅监听 127.0.0.1）
+  const uiUrl = running && s.variant === "ui" ? buildUiUrl(s) : null;
+  state.uiUrl = uiUrl;
+  const urlRow = $("ui-url-row");
+  const openBtn = $("btn-open-ui");
+  const hint = $("ui-hint");
+  if (uiUrl) {
+    urlRow.classList.remove("hidden");
+    openBtn.classList.remove("hidden");
+    $("ui-url-input").value = uiUrl;
+    hint.classList.add("hidden");
+  } else {
+    urlRow.classList.add("hidden");
+    openBtn.classList.add("hidden");
+    if (running && s.variant === "ui") {
+      hint.classList.remove("hidden");
+      hint.classList.add("warn");
+      hint.textContent = "可视化代理未就绪（可能端口被占用），远程暂无法访问。";
+    } else {
+      hint.classList.add("hidden");
+    }
+  }
 }
 
 // --------------------------- 版本类型选择 --------------------------- //
@@ -135,6 +198,7 @@ function startInstallPolling() {
         clearInterval(state.installPolling);
         state.installPolling = null;
         $("btn-install").disabled = false;
+        $("btn-reinstall").disabled = false;
         if (p.error) {
           toast("安装失败：" + p.error, "err");
         } else {
@@ -148,14 +212,15 @@ function startInstallPolling() {
       clearInterval(state.installPolling);
       state.installPolling = null;
       $("btn-install").disabled = false;
+      $("btn-reinstall").disabled = false;
     }
   }, 900);
 }
 
 async function doInstall() {
   const version = $("in-version").value.trim() || "latest";
-  const mirror = ($("in-mirror") ? $("in-mirror").value.trim() : "");
-  const btn = $("btn-install");
+  const mirror = $("in-mirror") ? $("in-mirror").value.trim() : "";
+  const btn = $("btn-install").classList.contains("hidden") ? $("btn-reinstall") : $("btn-install");
   busy(btn, true);
   try {
     await bridge.apiPost("install", {
@@ -172,12 +237,18 @@ async function doInstall() {
 }
 
 async function doUninstall() {
-  if (!confirm("确定卸载 CBM？（可保留索引数据）")) return;
-  const purge = confirm("是否同时删除索引数据缓存？\n点“确定”删除，点“取消”保留。");
+  const res = await confirmModal({
+    title: "卸载 CBM",
+    message: "确定要卸载 CBM 吗？卸载后需重新安装才能使用。",
+    okText: "卸载",
+    checkbox: { label: "同时删除索引数据缓存（不可恢复）", checked: false },
+  });
+  if (!res.ok) return;
+
   const btn = $("btn-uninstall");
   busy(btn, true);
   try {
-    await bridge.apiPost("uninstall", { purge_data: purge });
+    await bridge.apiPost("uninstall", { purge_data: res.checked });
     toast("已卸载 CBM", "ok");
     refreshStatus();
   } catch (e) {
@@ -185,6 +256,47 @@ async function doUninstall() {
   } finally {
     busy(btn, false);
   }
+}
+
+// --------------------------- 可视化 --------------------------- //
+function openUi() {
+  if (!state.uiUrl) return;
+  let win = null;
+  try {
+    win = window.open(state.uiUrl, "_blank", "noopener,noreferrer");
+  } catch (e) {
+    win = null;
+  }
+  if (!win) {
+    // 弹窗被拦截：自动复制地址并提示用户手动打开。
+    try {
+      $("ui-url-input").select();
+      document.execCommand("copy");
+    } catch (e) {
+      /* 忽略 */
+    }
+    toast("浏览器拦截了弹窗，地址已复制，请手动打开", "ok");
+  }
+}
+
+function copyUiUrl() {
+  const input = $("ui-url-input");
+  if (!state.uiUrl) return;
+  let ok = false;
+  try {
+    input.select();
+    ok = document.execCommand("copy");
+  } catch (e) {
+    ok = false;
+  }
+  if (!ok && navigator.clipboard) {
+    navigator.clipboard.writeText(state.uiUrl).then(
+      () => toast("已复制可视化地址", "ok"),
+      () => toast("复制失败，请手动选择复制", "err"),
+    );
+    return;
+  }
+  toast(ok ? "已复制可视化地址" : "复制失败，请手动选择复制", ok ? "ok" : "err");
 }
 
 // --------------------------- 运行控制 --------------------------- //
@@ -320,7 +432,10 @@ function bind() {
   $("btn-stop").addEventListener("click", () => doRun("stop"));
   $("btn-restart").addEventListener("click", () => doRun("restart"));
   $("btn-install").addEventListener("click", doInstall);
+  $("btn-reinstall").addEventListener("click", doInstall);
   $("btn-uninstall").addEventListener("click", doUninstall);
+  $("btn-open-ui").addEventListener("click", openUi);
+  $("btn-copy-url").addEventListener("click", copyUiUrl);
   $("btn-load-config").addEventListener("click", loadConfig);
   $("btn-load-logs").addEventListener("click", loadLogs);
 
@@ -329,9 +444,7 @@ function bind() {
   });
 
   if ($("btn-reload-versions")) {
-    $("btn-reload-versions").addEventListener("click", () =>
-      loadVersions(true),
-    );
+    $("btn-reload-versions").addEventListener("click", () => loadVersions(true));
   }
   loadVersions(false);
   loadMirrorDefault();
@@ -346,17 +459,14 @@ async function loadVersions(force) {
   try {
     const v = await bridge.apiGet("versions");
     const current = sel.value;
-    // 保留 latest，追加 releases
     sel.innerHTML = '<option value="latest">latest（最新稳定版）</option>';
     const list = v.releases || [];
     list.forEach((r) => {
       const opt = document.createElement("option");
       opt.value = r.version;
-      opt.textContent =
-        "v" + r.version + (r.prerelease ? "（预发布）" : "");
+      opt.textContent = "v" + r.version + (r.prerelease ? "（预发布）" : "");
       sel.appendChild(opt);
     });
-    // 恢复原选择（若仍存在）
     if ([...sel.options].some((o) => o.value === current)) {
       sel.value = current;
     }
@@ -365,7 +475,7 @@ async function loadVersions(force) {
       if (first) first.textContent = `latest（最新稳定版 v${v.latest}）`;
     }
   } catch (e) {
-    /* 静默：仍可手动输入 latest */
+    /* 静默：仍可手动选择 latest */
   }
 }
 

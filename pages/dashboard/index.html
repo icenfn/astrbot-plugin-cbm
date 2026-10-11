@@ -50,15 +50,19 @@
             <div class="stat"><label>版本</label><value id="st-version">—</value></div>
             <div class="stat"><label>PID</label><value id="st-pid">—</value></div>
             <div class="stat"><label>端口</label><value id="st-port">—</value></div>
-            <div class="stat"><label>运行时长</label><value id="st-uptime">—</value></div>
             <div class="stat"><label>数据目录</label><value id="st-cache" class="ellipsis">—</value></div>
           </div>
           <div class="cbm-row">
             <button class="cbm-btn primary" id="btn-start">▶ 启动</button>
             <button class="cbm-btn" id="btn-stop">■ 停止</button>
             <button class="cbm-btn" id="btn-restart">⟳ 重启</button>
-            <a class="cbm-btn ghost hidden" id="link-ui" target="_blank" rel="noopener">打开可视化 ↗</a>
+            <button class="cbm-btn ghost hidden" id="btn-open-ui">打开可视化 ↗</button>
           </div>
+          <div class="cbm-uiurl hidden" id="ui-url-row">
+            <input type="text" id="ui-url-input" readonly />
+            <button class="cbm-btn ghost mini" id="btn-copy-url">复制</button>
+          </div>
+          <p class="cbm-hint hidden" id="ui-hint"></p>
         </section>
 
         <!-- 安装 / 卸载 -->
@@ -67,8 +71,8 @@
           <div class="cbm-field">
             <label>版本类型</label>
             <div class="cbm-seg" id="seg-variant" role="tablist">
-              <button class="seg-item active" data-value="standard">标准版</button>
-              <button class="seg-item" data-value="ui">UI 版</button>
+              <button class="seg-item active" data-value="ui">UI 版</button>
+              <button class="seg-item" data-value="standard">标准版</button>
             </div>
             <p class="cbm-hint">标准版为无界面的 MCP 服务；UI 版额外提供 3D 知识图谱可视化面板。</p>
           </div>
@@ -94,9 +98,11 @@
             <span id="progress-text">准备中…</span>
           </div>
           <div class="cbm-row">
-            <button class="cbm-btn primary" id="btn-install">安装 / 更新</button>
-            <button class="cbm-btn danger" id="btn-uninstall">卸载</button>
+            <button class="cbm-btn primary" id="btn-install">安装</button>
+            <button class="cbm-btn hidden" id="btn-reinstall">重新安装 / 更新</button>
+            <button class="cbm-btn danger hidden" id="btn-uninstall">卸载</button>
           </div>
+          <p class="cbm-hint" id="install-hint"></p>
         </section>
 
         <!-- 配置管理 -->
@@ -119,6 +125,20 @@
           <pre class="cbm-log" id="log-box">尚未加载日志。</pre>
         </section>
       </main>
+    </div>
+
+    <div class="cbm-modal-mask hidden" id="modal-mask">
+      <div class="cbm-modal" role="dialog" aria-modal="true">
+        <h3 id="modal-title">确认</h3>
+        <p id="modal-body"></p>
+        <label class="cbm-modal-check hidden" id="modal-check-wrap">
+          <input type="checkbox" id="modal-check" /><span id="modal-check-label"></span>
+        </label>
+        <div class="cbm-modal-actions">
+          <button class="cbm-btn ghost" id="modal-cancel">取消</button>
+          <button class="cbm-btn danger" id="modal-ok">确定</button>
+        </div>
+      </div>
     </div>
 
     <div class="cbm-toast-wrap" id="toasts"></div>

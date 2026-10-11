@@ -24,6 +24,10 @@ import subprocess
 import tarfile
 import time
 import zipfile
+import threading
+import urllib.error
+import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -36,6 +40,12 @@ BIN_NAME = "codebase-memory-mcp"
 DEFAULT_PORT = 9749
 # 默认 GitHub 下载加速镜像（可自定义，留空则直连 GitHub）
 DEFAULT_MIRROR = "https://gh-proxy.com/"
+
+# UI 可视化反向代理默认监听地址。
+# CBM 的 HTTP 面板只绑定 127.0.0.1 且会校验 Host 头，远程浏览器无法直连，
+# 因此由本插件提供一个轻量反向代理对外暴露。
+DEFAULT_PROXY_HOST = "0.0.0.0"
+DEFAULT_PROXY_PORT = 9750
 
 # 已知配置项及其类型（用于 WebUI 渲染与值转换）
 KNOWN_CONFIG: dict[str, str] = {
@@ -154,6 +164,124 @@ def _pid_alive(pid: int) -> bool:
 
 
 # --------------------------------------------------------------------------- #
+# UI 反向代理（CBM 的 HTTP 面板仅监听 127.0.0.1，且会校验 Host 头）
+# --------------------------------------------------------------------------- #
+class UiProxy:
+    """把 ``127.0.0.1:<target>`` 的 CBM 可视化面板通过本机网卡对外暴露。
+
+    CBM 只监听回环地址，并且在 Host 头不是 127.0.0.1 时返回 403，因此远程
+    浏览器无法直接访问。此处用一个轻量反向代理：对外监听 ``host:port``，把
+    请求转发到 ``127.0.0.1:target_port``（转发时 Host 即 127.0.0.1，可通过
+    CBM 的校验）。同时移除 CBM 响应里的 ``frame-ancestors 'none'``，便于按需内嵌。
+    """
+
+    def __init__(self, host: str, port: int, target_port: int):
+        self.host = host
+        self.port = int(port)
+        self.target_port = int(target_port)
+        self._httpd: ThreadingHTTPServer | None = None
+        self._thread: threading.Thread | None = None
+
+    def _make_handler(self):
+        target_port = self.target_port
+
+        class _Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def _proxy(self, method: str) -> None:  # noqa: ANN001
+                target = f"http://127.0.0.1:{target_port}{self.path}"
+                body = None
+                length = self.headers.get("Content-Length")
+                if length:
+                    try:
+                        body = self.rfile.read(int(length))
+                    except (ValueError, OSError):
+                        body = None
+                req = urllib.request.Request(target, data=body, method=method)
+                for key, value in self.headers.items():
+                    if key.lower() in ("host", "content-length", "connection"):
+                        continue
+                    req.add_header(key, value)
+                try:
+                    resp = urllib.request.urlopen(req, timeout=30)
+                    data = resp.read()
+                    status = resp.status
+                    headers = resp.headers
+                except urllib.error.HTTPError as exc:
+                    data = exc.read()
+                    status = exc.code
+                    headers = exc.headers
+                except Exception as exc:  # noqa: BLE001
+                    data = f"CBM 未就绪：{exc}".encode("utf-8")
+                    status = 502
+                    headers = {}
+
+                self.send_response(status)
+                for key, value in (headers.items() if hasattr(headers, "items") else []):
+                    low = key.lower()
+                    if low in ("content-length", "connection", "transfer-encoding"):
+                        continue
+                    if low == "content-security-policy":
+                        value = value.replace("frame-ancestors 'none';", "").replace(
+                            "frame-ancestors 'none'", ""
+                        )
+                    self.send_header(key, value)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                if method != "HEAD":
+                    self.wfile.write(data)
+
+            def do_GET(self):  # noqa: N802
+                self._proxy("GET")
+
+            def do_HEAD(self):  # noqa: N802
+                self._proxy("HEAD")
+
+            def do_POST(self):  # noqa: N802
+                self._proxy("POST")
+
+            def do_PUT(self):  # noqa: N802
+                self._proxy("PUT")
+
+            def do_DELETE(self):  # noqa: N802
+                self._proxy("DELETE")
+
+            def do_OPTIONS(self):  # noqa: N802
+                self._proxy("OPTIONS")
+
+            def log_message(self, *args):  # noqa: ANN002
+                return
+
+        return _Handler
+
+    def start(self) -> dict[str, Any]:
+        if self._httpd is not None:
+            return {"running": True, "host": self.host, "port": self.port}
+        self._httpd = ThreadingHTTPServer((self.host, self.port), self._make_handler())
+        self._httpd.daemon_threads = True
+        self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
+        self._thread.start()
+        return {"running": True, "host": self.host, "port": self.port}
+
+    def stop(self) -> None:
+        if self._httpd is not None:
+            try:
+                self._httpd.shutdown()
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                self._httpd.server_close()
+            except Exception:  # noqa: BLE001
+                pass
+        self._httpd = None
+        self._thread = None
+
+    @property
+    def running(self) -> bool:
+        return self._httpd is not None
+
+
+# --------------------------------------------------------------------------- #
 # 状态
 # --------------------------------------------------------------------------- #
 @dataclass
@@ -199,6 +327,8 @@ class CbmManager:
         self.meta_path = self.root / "install.json"
         self.log_path = self.log_dir / "cbm.log"
         self._popen: subprocess.Popen | None = None
+        self._proxy: UiProxy | None = None
+        self._proxy_target: int | None = None
 
     # ---------- 基础路径 ----------
     @property
@@ -237,6 +367,52 @@ class CbmManager:
         if env:
             return Path(os.path.expanduser(env)).resolve()
         return (Path.home() / ".cache" / "codebase-memory-mcp").resolve()
+
+    # ---------- UI 反向代理 ----------
+    def start_proxy(
+        self,
+        listen_host: str = DEFAULT_PROXY_HOST,
+        listen_port: int = DEFAULT_PROXY_PORT,
+        target_port: int | None = None,
+    ) -> dict[str, Any]:
+        """启动对外可视化反向代理；target 默认指向当前 UI 端口。"""
+        target = int(target_port or self._proxy_target or DEFAULT_PORT)
+        if self._proxy is not None and self._proxy.running:
+            if self._proxy.port == int(listen_port) and self._proxy.target_port == target:
+                return {
+                    "running": True,
+                    "host": self._proxy.host,
+                    "port": self._proxy.port,
+                    "target_port": target,
+                }
+            self.stop_proxy()
+        self._proxy = UiProxy(listen_host, int(listen_port), target)
+        self._proxy_target = target
+        try:
+            return self._proxy.start()
+        except OSError as exc:
+            self._proxy = None
+            return {
+                "running": False,
+                "host": listen_host,
+                "port": int(listen_port),
+                "error": f"代理监听失败: {exc}",
+            }
+
+    def stop_proxy(self) -> None:
+        if self._proxy is not None:
+            self._proxy.stop()
+        self._proxy = None
+
+    def proxy_info(self) -> dict[str, Any]:
+        if self._proxy is not None and self._proxy.running:
+            return {
+                "running": True,
+                "host": self._proxy.host,
+                "port": self._proxy.port,
+                "target_port": self._proxy.target_port,
+            }
+        return {"running": False, "host": None, "port": None, "target_port": None}
 
     # ---------- 版本解析 ----------
     def get_latest_version(self) -> str:
@@ -627,6 +803,7 @@ class CbmManager:
             "variant": state.variant or info.get("variant"),
             "port": state.port,
             "ui_url": ui_url,
+            "ui_proxy": self.proxy_info(),
             "cache_dir": state.cache_dir or str(self.resolve_cache_dir()),
             "uptime": uptime,
             "started_at": state.started_at,
@@ -643,6 +820,23 @@ class CbmManager:
             return "\n".join(data[-max(1, int(lines)):])
         except Exception:  # noqa: BLE001
             return ""
+
+    def read_ui_logs(self, port: int, lines: int = 200) -> str:
+        """从 CBM UI 的 /api/logs 读取运行日志。
+
+        UI 模式下 CBM 的 stdout/stderr 基本为空，真正的日志由 UI 的 HTTP
+        接口提供，因此远程查看运行日志需走此处。
+        """
+        url = f"http://127.0.0.1:{int(port)}/api/logs"
+        try:
+            with urllib.request.urlopen(url, timeout=8) as resp:
+                data = json.loads(resp.read().decode("utf-8", "ignore"))
+        except Exception as exc:  # noqa: BLE001
+            raise CbmError(f"读取 CBM 日志失败: {exc}", status_code=502) from exc
+        items = data.get("lines") if isinstance(data, dict) else data
+        if not items:
+            return ""
+        return "\n".join(str(x) for x in items[-max(1, int(lines)):])
 
     # ---------- 配置 ----------
     def _run_config(self, args: list[str], cache_dir: str | None) -> subprocess.CompletedProcess:
