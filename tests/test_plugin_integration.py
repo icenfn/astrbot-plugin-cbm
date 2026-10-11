@@ -27,9 +27,10 @@ EXPECTED_ROUTES = {
     f"/{PLUGIN_NAME}/start",
     f"/{PLUGIN_NAME}/stop",
     f"/{PLUGIN_NAME}/restart",
-    f"/{PLUGIN_NAME}/config",
-    f"/{PLUGIN_NAME}/config/reset",
     f"/{PLUGIN_NAME}/logs",
+    f"/{PLUGIN_NAME}/logs/clear",
+    f"/{PLUGIN_NAME}/mcp",
+    f"/{PLUGIN_NAME}/mcp/add",
 }
 
 
@@ -196,9 +197,16 @@ def test_start_when_not_installed_errors():
     assert result["kind"] == "error"
 
 
-def test_config_get_when_not_installed_errors():
+def test_logs_clear_handler_returns_json():
     plugin, _, _ = _make_plugin()
-    result = asyncio.run(plugin.api_config_get())
+    result = asyncio.run(plugin.api_logs_clear())
+    assert result["kind"] == "json"
+    assert result["data"]["ok"] is True
+
+
+def test_mcp_config_when_not_installed_errors():
+    plugin, _, _ = _make_plugin()
+    result = asyncio.run(plugin.api_mcp_config())
     assert result["kind"] == "error"
 
 

@@ -142,16 +142,6 @@ def test_list_releases_parsing(monkeypatch):
     assert releases[1]["prerelease"] is True
 
 
-def test_config_coerce_and_cli():
-    assert cm._coerce("true", "bool") is True
-    assert cm._coerce("false", "bool") is False
-    assert cm._coerce("50000", "int") == 50000
-    assert cm._coerce("auto", "string") == "auto"
-    assert cm._to_cli(True) == "true"
-    assert cm._to_cli(False) == "false"
-    assert cm._to_cli(9749) == "9749"
-
-
 def test_state_roundtrip(tmp_path):
     p = tmp_path / "state.json"
     st = cm.CbmState(pid=123, variant="ui", port=9749, cache_dir="/x", started_at=1.0)
@@ -255,29 +245,29 @@ def test_read_logs(mgr_with_bin):
 
 
 # --------------------------------------------------------------------------- #
-# 配置
+# 日志清理 & MCP 接入
 # --------------------------------------------------------------------------- #
-def test_config_list_set_reset(mgr_with_bin):
+def test_clear_logs(mgr_with_bin):
     m = mgr_with_bin
-    cache = str(m.root / "cache")
-    data = m.config_list(cache_dir=cache)
-    assert "items" in data and "ui_port" in data["items"]
-    assert data["items"]["ui_port"] == 9749
-    assert data["items"]["auto_watch"] is True
-
-    m.config_set("ui_port", 9760, cache_dir=cache)
-    assert m.config_list(cache_dir=cache)["items"]["ui_port"] == 9760
-
-    m.config_set("auto_watch", False, cache_dir=cache)
-    assert m.config_list(cache_dir=cache)["items"]["auto_watch"] is False
-
-    m.config_reset("ui_port", cache_dir=cache)
-    assert m.config_list(cache_dir=cache)["items"]["ui_port"] == 9749
+    m.log_dir.mkdir(parents=True, exist_ok=True)
+    m.log_path.write_text("some log line\n", "utf-8")
+    m.clear_logs()
+    assert m.log_path.read_text("utf-8") == ""
 
 
-def test_config_requires_install(mgr):
+def test_mcp_server_config_requires_install(mgr):
     with pytest.raises(cm.CbmError):
-        mgr.config_list()
+        mgr.mcp_server_config()
+
+
+def test_mcp_server_config_shape(mgr_with_bin):
+    m = mgr_with_bin
+    cfg = m.mcp_server_config()
+    assert cm.BIN_NAME in cfg
+    entry = cfg[cm.BIN_NAME]
+    assert entry["command"] == str(m.binary_path)
+    assert entry["args"] == []
+    assert "CBM_CACHE_DIR" in entry["env"]
 
 
 # --------------------------------------------------------------------------- #

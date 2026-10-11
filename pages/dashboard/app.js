@@ -145,28 +145,42 @@ function renderStatus(s) {
   $("btn-stop").disabled = !running;
   $("btn-restart").disabled = !installed;
 
-  // 可视化地址（经插件反向代理对外暴露；CBM 自身仅监听 127.0.0.1）
+  // WebUI 地址（经插件反向代理对外暴露；CBM 自身仅监听 127.0.0.1）
   const uiUrl = running && s.variant === "ui" ? buildUiUrl(s) : null;
   state.uiUrl = uiUrl;
-  const urlRow = $("ui-url-row");
-  const openBtn = $("btn-open-ui");
+  const tag = $("ui-state-tag");
+  const input = $("ui-url-input");
+  const copyBtn = $("btn-copy-url");
+  const openLink = $("btn-open-ui");
   const hint = $("ui-hint");
   if (uiUrl) {
-    urlRow.classList.remove("hidden");
-    openBtn.classList.remove("hidden");
-    $("ui-url-input").value = uiUrl;
-    hint.classList.add("hidden");
+    $(`ui-url-row`).classList.remove("hidden");
+    input.value = uiUrl;
+    openLink.href = uiUrl;
+    tag.textContent = "可访问";
+    hint.classList.remove("warn");
+    hint.textContent = "复制上方地址在浏览器打开（CBM 面板无法内嵌到当前页面）。";
   } else {
-    urlRow.classList.add("hidden");
-    openBtn.classList.add("hidden");
+    input.value = "";
+    openLink.removeAttribute("href");
     if (running && s.variant === "ui") {
-      hint.classList.remove("hidden");
+      tag.textContent = "代理未就绪";
       hint.classList.add("warn");
       hint.textContent = "可视化代理未就绪（可能端口被占用），远程暂无法访问。";
+    } else if (running) {
+      tag.textContent = "标准版无面板";
+      hint.classList.remove("warn");
+      hint.textContent = "当前为标准版，无可视化面板。";
     } else {
-      hint.classList.add("hidden");
+      tag.textContent = installed ? "已停止" : "未安装";
+      hint.classList.remove("warn");
+      hint.textContent = installed
+        ? "CBM 未运行，启动后将在此显示可视化地址。"
+        : "尚未安装 CBM。";
     }
   }
+  if (copyBtn) copyBtn.disabled = !uiUrl;
+  if (openLink) openLink.classList.toggle("disabled", !uiUrl);
 }
 
 // --------------------------- 版本类型选择 --------------------------- //
@@ -259,26 +273,6 @@ async function doUninstall() {
 }
 
 // --------------------------- 可视化 --------------------------- //
-function openUi() {
-  if (!state.uiUrl) return;
-  let win = null;
-  try {
-    win = window.open(state.uiUrl, "_blank", "noopener,noreferrer");
-  } catch (e) {
-    win = null;
-  }
-  if (!win) {
-    // 弹窗被拦截：自动复制地址并提示用户手动打开。
-    try {
-      $("ui-url-input").select();
-      document.execCommand("copy");
-    } catch (e) {
-      /* 忽略 */
-    }
-    toast("浏览器拦截了弹窗，地址已复制，请手动打开", "ok");
-  }
-}
-
 function copyUiUrl() {
   const input = $("ui-url-input");
   if (!state.uiUrl) return;
@@ -318,110 +312,90 @@ async function doRun(action) {
   }
 }
 
-// --------------------------- 配置 --------------------------- //
-async function loadConfig() {
-  const box = $("config-list");
-  box.innerHTML = '<p class="cbm-empty">读取中…</p>';
+// --------------------------- MCP 接入 --------------------------- //
+async function loadMcp() {
+  const box = $("mcp-snippet");
+  box.textContent = "加载中…";
   try {
-    const data = await bridge.apiGet("config");
-    renderConfig(data);
+    const data = await bridge.apiGet("mcp");
+    state.mcpSnippet = data.snippet || "";
+    box.textContent = data.snippet || "（无法生成配置）";
+    const st = $("mcp-status");
+    if (st) st.dataset.path = data.config_path || "";
   } catch (e) {
-    box.innerHTML =
-      '<p class="cbm-empty">读取失败：' + e.message + "</p>";
+    box.textContent = "读取失败：" + e.message;
   }
 }
 
-function renderConfig(data) {
-  const box = $("config-list");
-  const items = data.items || {};
-  const keys = Object.keys(items);
-  if (!keys.length) {
-    box.innerHTML = '<p class="cbm-empty">暂无可用配置项。</p>';
-    return;
-  }
-  box.innerHTML = "";
-  keys.forEach((key) => {
-    const value = items[key];
-    const type = (data.known && data.known[key]) || typeof value;
-    const row = document.createElement("div");
-    row.className = "config-row";
-
-    const name = document.createElement("span");
-    name.className = "config-key";
-    name.innerHTML = key + "<small>" + type + "</small>";
-
-    const ctrl = document.createElement("div");
-    ctrl.className = "config-ctrl";
-
-    let getter;
-    if (type === "bool") {
-      const sw = document.createElement("label");
-      sw.className = "switch";
-      const input = document.createElement("input");
-      input.type = "checkbox";
-      input.checked = !!value;
-      const sl = document.createElement("span");
-      sl.className = "slider";
-      sw.appendChild(input);
-      sw.appendChild(sl);
-      ctrl.appendChild(sw);
-      getter = () => input.checked;
-      input.addEventListener("change", () => saveConfig(key, input.checked, input));
-    } else {
-      const input = document.createElement("input");
-      input.type = type === "int" ? "number" : "text";
-      input.value = value;
-      ctrl.appendChild(input);
-      getter = () => (type === "int" ? parseInt(input.value, 10) : input.value);
-      const save = document.createElement("button");
-      save.className = "cbm-btn mini";
-      save.textContent = "保存";
-      save.addEventListener("click", () => saveConfig(key, getter(), save));
-      ctrl.appendChild(save);
+async function copyMcp() {
+  if (!state.mcpSnippet) await loadMcp();
+  if (!state.mcpSnippet) return;
+  let ok = false;
+  if (navigator.clipboard) {
+    try {
+      await navigator.clipboard.writeText(state.mcpSnippet);
+      ok = true;
+    } catch (e) {
+      ok = false;
     }
-
-    const reset = document.createElement("button");
-    reset.className = "cbm-btn mini ghost";
-    reset.textContent = "重置";
-    reset.title = "恢复默认值";
-    reset.addEventListener("click", () => resetConfig(key));
-    ctrl.appendChild(reset);
-
-    row.appendChild(name);
-    row.appendChild(ctrl);
-    box.appendChild(row);
-  });
-}
-
-async function saveConfig(key, value, ctrl) {
-  try {
-    await bridge.apiPost("config", { key, value });
-    toast(`已保存 ${key}`, "ok");
-  } catch (e) {
-    toast(`保存 ${key} 失败：` + e.message, "err");
   }
+  toast(ok ? "已复制 MCP 配置" : "复制失败，请手动选择复制", ok ? "ok" : "err");
 }
 
-async function resetConfig(key) {
+async function addMcp() {
+  const btn = $("btn-mcp-add");
+  busy(btn, true);
   try {
-    await bridge.apiPost("config/reset", { key });
-    toast(`已重置 ${key}`, "ok");
-    loadConfig();
+    const res = await bridge.apiPost("mcp/add", {});
+    toast("已写入 AstrBot MCP 配置：" + (res.path || ""), "ok");
+    const st = $("mcp-status");
+    if (st) st.textContent = "已添加到 " + (res.path || "AstrBot mcp_server.json") + "，重启 AstrBot 后生效。";
   } catch (e) {
-    toast(`重置 ${key} 失败：` + e.message, "err");
+    toast("添加失败：" + e.message + "（可复制配置手动添加）", "err");
+  } finally {
+    busy(btn, false);
   }
 }
 
 // --------------------------- 日志 --------------------------- //
-async function loadLogs() {
+async function loadLogs(silent = false) {
   const box = $("log-box");
-  box.textContent = "加载中…";
+  if (!silent) box.textContent = "加载中…";
   try {
     const data = await bridge.apiGet("logs", { lines: 300 });
     box.textContent = data.lines || "（暂无日志）";
     box.scrollTop = box.scrollHeight;
   } catch (e) {
-    box.textContent = "读取日志失败：" + e.message;
+    if (!silent) box.textContent = "读取日志失败：" + e.message;
+  }
+}
+
+async function clearLogs() {
+  const res = await confirmModal({
+    title: "清除日志",
+    message: "确定要清空当前运行日志吗？（不影响 CBM 运行）",
+    okText: "清除",
+    danger: true,
+  });
+  if (!res.ok) return;
+  try {
+    await bridge.apiPost("logs/clear", {});
+    toast("日志已清除", "ok");
+    loadLogs();
+  } catch (e) {
+    toast("清除失败：" + e.message, "err");
+  }
+}
+
+function setLogAutoRefresh(on) {
+  if (state.logTimer) {
+    clearInterval(state.logTimer);
+    state.logTimer = null;
+  }
+  if (on) {
+    state.logTimer = setInterval(() => {
+      if (!document.hidden) loadLogs(true);
+    }, 5000);
   }
 }
 
@@ -434,10 +408,16 @@ function bind() {
   $("btn-install").addEventListener("click", doInstall);
   $("btn-reinstall").addEventListener("click", doInstall);
   $("btn-uninstall").addEventListener("click", doUninstall);
-  $("btn-open-ui").addEventListener("click", openUi);
+  $("btn-open-ui").addEventListener("click", (e) => {
+    if (!state.uiUrl) e.preventDefault();
+  });
   $("btn-copy-url").addEventListener("click", copyUiUrl);
-  $("btn-load-config").addEventListener("click", loadConfig);
-  $("btn-load-logs").addEventListener("click", loadLogs);
+  $("btn-load-logs").addEventListener("click", () => loadLogs(false));
+  $("btn-clear-logs").addEventListener("click", clearLogs);
+  $("auto-logs").addEventListener("change", (e) => setLogAutoRefresh(e.target.checked));
+  $("btn-mcp-load").addEventListener("click", loadMcp);
+  $("btn-mcp-copy").addEventListener("click", copyMcp);
+  $("btn-mcp-add").addEventListener("click", addMcp);
 
   document.querySelectorAll("#seg-variant .seg-item").forEach((el) => {
     el.addEventListener("click", () => setVariant(el.dataset.value));
@@ -448,6 +428,8 @@ function bind() {
   }
   loadVersions(false);
   loadMirrorDefault();
+  loadLogs(true);
+  setLogAutoRefresh($("auto-logs").checked);
 }
 
 // 加载可用版本列表到下拉框

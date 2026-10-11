@@ -133,34 +133,6 @@ body {
 .cbm-progress .bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--primary), #8b5cf6); transition: width .25s ease; }
 .cbm-progress span { display: block; font-size: 12px; color: var(--muted); margin-top: 6px; }
 
-.cbm-config-list { display: flex; flex-direction: column; gap: 8px; }
-.cbm-empty { color: var(--muted); font-size: 13px; margin: 4px 0; }
-.config-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 14px;
-  padding: 10px 12px; background: var(--panel-soft); border: 1px solid var(--border); border-radius: 10px;
-}
-.config-key { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
-.config-key small { color: var(--muted); margin-left: 6px; font-family: inherit; }
-.config-ctrl { display: flex; align-items: center; gap: 8px; }
-
-.switch { position: relative; width: 42px; height: 24px; flex: none; }
-.switch input { opacity: 0; width: 0; height: 0; }
-.switch .slider {
-  position: absolute; inset: 0; border-radius: 999px; background: var(--border);
-  cursor: pointer; transition: .2s;
-}
-.switch .slider::before {
-  content: ""; position: absolute; width: 18px; height: 18px; left: 3px; top: 3px;
-  border-radius: 50%; background: #fff; transition: .2s; box-shadow: 0 1px 2px rgba(0,0,0,.2);
-}
-.switch input:checked + .slider { background: var(--primary); }
-.switch input:checked + .slider::before { transform: translateX(18px); }
-
-.config-ctrl input[type="text"], .config-ctrl input[type="number"] {
-  width: 130px; padding: 6px 9px; border-radius: 8px; border: 1px solid var(--border);
-  background: var(--panel); color: var(--text); font-size: 12.5px; outline: none;
-}
-.config-ctrl input:focus { border-color: var(--primary); }
 .cbm-btn.mini { padding: 6px 11px; font-size: 12px; }
 
 .cbm-log {
@@ -191,6 +163,12 @@ body {
   outline: none;
 }
 .cbm-hint.warn { color: var(--warn); }
+
+/* 日志工具栏 & MCP 接入配置 */
+.cbm-log-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cbm-check { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); cursor: pointer; }
+.cbm-check input { width: 14px; height: 14px; }
+.cbm-mcp { max-height: 240px; }
 
 /* 二次确认弹窗（iframe 内 confirm() 常被拦截，改用自定义 modal） */
 .cbm-modal-mask {

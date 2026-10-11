@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import json
 import os
 import time
 from pathlib import Path
@@ -60,7 +61,7 @@ DEFAULT_PORT = core.DEFAULT_PORT
 DEFAULT_MIRROR = core.DEFAULT_MIRROR
 DEFAULT_PROXY_HOST = core.DEFAULT_PROXY_HOST
 DEFAULT_PROXY_PORT = core.DEFAULT_PROXY_PORT
-KNOWN_CONFIG = core.KNOWN_CONFIG
+BIN_NAME = core.BIN_NAME
 VARIANTS = core.VARIANTS
 
 
@@ -143,10 +144,10 @@ class CbmPlugin(Star):
             (f"{P}/start", self.api_start, ["POST"], "启动 CBM"),
             (f"{P}/stop", self.api_stop, ["POST"], "停止 CBM"),
             (f"{P}/restart", self.api_restart, ["POST"], "重启 CBM"),
-            (f"{P}/config", self.api_config_get, ["GET"], "读取 CBM 配置"),
-            (f"{P}/config", self.api_config_set, ["POST"], "修改 CBM 配置"),
-            (f"{P}/config/reset", self.api_config_reset, ["POST"], "重置配置项"),
             (f"{P}/logs", self.api_logs, ["GET"], "读取运行日志"),
+            (f"{P}/logs/clear", self.api_logs_clear, ["POST"], "清除运行日志"),
+            (f"{P}/mcp", self.api_mcp_config, ["GET"], "获取 MCP 接入配置"),
+            (f"{P}/mcp/add", self.api_mcp_add, ["POST"], "写入 AstrBot MCP 配置"),
         ]
         for route, handler, methods, desc in routes:
             self.context.register_web_api(route, handler, methods, desc)
@@ -345,40 +346,69 @@ class CbmPlugin(Star):
         return json_response({"ok": True, **data, "ui_proxy": proxy})
 
     # ------------------------------------------------------------------ #
-    # 配置
+    # 日志清理
     # ------------------------------------------------------------------ #
-    async def api_config_get(self):
-        cache_dir = self._cfg("cache_dir", "") or None
+    async def api_logs_clear(self):
         try:
-            data = await self._call(self.manager.config_list, cache_dir)
+            await self._call(self.manager.clear_logs)
         except Exception as exc:  # noqa: BLE001
             return self._err(exc)
-        return json_response(data)
+        logger.info("CBM 运行日志已清除")
+        return json_response({"ok": True})
 
-    async def api_config_set(self):
-        payload = await request.json(default={})
-        key = payload.get("key")
-        if not key:
-            return error_response("缺少配置项名称")
-        value = payload.get("value")
-        cache_dir = self._cfg("cache_dir", "") or None
+    # ------------------------------------------------------------------ #
+    # MCP 接入 AstrBot
+    # ------------------------------------------------------------------ #
+    def _astrbot_mcp_config_path(self) -> Path | None:
+        """定位 AstrBot 的 MCP 服务配置文件（data/mcp_server.json）。"""
         try:
-            await self._call(self.manager.config_set, str(key), value, cache_dir)
-        except Exception as exc:  # noqa: BLE001
-            return self._err(exc)
-        return json_response({"ok": True, "key": key, "value": value})
+            from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 
-    async def api_config_reset(self):
-        payload = await request.json(default={})
-        key = payload.get("key")
-        if not key:
-            return error_response("缺少配置项名称")
-        cache_dir = self._cfg("cache_dir", "") or None
+            return Path(get_astrbot_data_path()) / "mcp_server.json"
+        except Exception:  # noqa: BLE001
+            return None
+
+    async def api_mcp_config(self):
         try:
-            await self._call(self.manager.config_reset, str(key), cache_dir)
+            servers = await self._call(self.manager.mcp_server_config)
         except Exception as exc:  # noqa: BLE001
             return self._err(exc)
-        return json_response({"ok": True, "key": key})
+        path = self._astrbot_mcp_config_path()
+        snippet = json.dumps({"mcpServers": servers}, ensure_ascii=False, indent=2)
+        return json_response(
+            {
+                "servers": servers,
+                "snippet": snippet,
+                "config_path": str(path) if path else None,
+            }
+        )
+
+    async def api_mcp_add(self):
+        payload = await request.json(default={})
+        name = str(payload.get("name") or BIN_NAME)
+        try:
+            servers = await self._call(self.manager.mcp_server_config, name)
+        except Exception as exc:  # noqa: BLE001
+            return self._err(exc)
+
+        path = self._astrbot_mcp_config_path()
+        if path is None:
+            return error_response("无法定位 AstrBot 数据目录，请复制配置手动添加。")
+        try:
+            data: dict = {}
+            if path.exists():
+                data = json.loads(path.read_text("utf-8") or "{}") or {}
+            if not isinstance(data, dict):
+                data = {}
+            data.setdefault("mcpServers", {})
+            data["mcpServers"].update(servers)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(data, ensure_ascii=False, indent=4), "utf-8")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"写入 AstrBot MCP 配置失败: {exc}")
+            return error_response(f"写入失败：{exc}。请复制配置手动添加。", status_code=500)
+        logger.info(f"已将 CBM 写入 AstrBot MCP 配置：{path}")
+        return json_response({"ok": True, "path": str(path), "servers": servers})
 
     # ------------------------------------------------------------------ #
     # 日志

@@ -47,17 +47,6 @@ DEFAULT_MIRROR = "https://gh-proxy.com/"
 DEFAULT_PROXY_HOST = "0.0.0.0"
 DEFAULT_PROXY_PORT = 9750
 
-# 已知配置项及其类型（用于 WebUI 渲染与值转换）
-KNOWN_CONFIG: dict[str, str] = {
-    "auto_index": "bool",
-    "auto_index_limit": "int",
-    "auto_watch": "bool",
-    "watcher_enabled": "bool",
-    "ui_enabled": "bool",
-    "ui_port": "int",
-    "ui-lang": "string",
-}
-
 VARIANTS = ("standard", "ui")
 
 
@@ -199,7 +188,19 @@ class UiProxy:
                         body = None
                 req = urllib.request.Request(target, data=body, method=method)
                 for key, value in self.headers.items():
-                    if key.lower() in ("host", "content-length", "connection"):
+                    low = key.lower()
+                    # CBM 会校验来源：Host 或 Origin 只要不是回环地址就返回
+                    # 403（"forbidden host"/"forbidden origin"）。浏览器通过
+                    # 代理访问时会带上真实站点的 Host 与（crossorigin 资源触发的）
+                    # Origin，因此这里必须丢弃它们，让 urllib 以 127.0.0.1 重新
+                    # 生成 Host，并彻底去掉 Origin。
+                    if low in (
+                        "host",
+                        "origin",
+                        "referer",
+                        "content-length",
+                        "connection",
+                    ):
                         continue
                     req.add_header(key, value)
                 try:
@@ -838,72 +839,37 @@ class CbmManager:
             return ""
         return "\n".join(str(x) for x in items[-max(1, int(lines)):])
 
-    # ---------- 配置 ----------
-    def _run_config(self, args: list[str], cache_dir: str | None) -> subprocess.CompletedProcess:
-        env = dict(os.environ)
-        env["CBM_CACHE_DIR"] = str(self.resolve_cache_dir(cache_dir))
-        return subprocess.run(
-            [str(self.binary_path), "config", *args],
-            capture_output=True,
-            text=True,
-            timeout=20,
-            env=env,
-        )
+    # ---------- 日志清理 ----------
+    def clear_logs(self) -> None:
+        """清空本地日志文件。
 
-    def config_list(self, cache_dir: str | None = None) -> dict[str, Any]:
-        if not self.is_installed():
-            raise CbmError("CBM 尚未安装")
+        UI 版的运行日志来自 CBM 的 ``/api/logs``（由 CBM 自身维护，无法清空），
+        此处清空的是插件捕获的 stdout/stderr 文件日志。
+        """
         try:
-            out = self._run_config(["list"], cache_dir)
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+            self.log_path.write_text("", "utf-8")
         except Exception as exc:  # noqa: BLE001
-            raise CbmError(f"读取配置失败: {exc}", status_code=500) from exc
-        text = out.stdout or ""
-        parsed: dict[str, Any] = {}
-        for line in text.splitlines():
-            if "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            key = key.strip()
-            if not key or key.lower().startswith("configuration"):
-                continue
-            parsed[key] = _coerce(value.strip(), KNOWN_CONFIG.get(key, "string"))
-        return {"raw": text.strip(), "items": parsed, "known": KNOWN_CONFIG}
+            raise CbmError(f"清除日志失败: {exc}", status_code=500) from exc
 
-    def config_set(self, key: str, value: Any, cache_dir: str | None = None) -> None:
+    # ---------- MCP 接入配置 ----------
+    def mcp_server_config(self, name: str = BIN_NAME) -> dict[str, Any]:
+        """返回把 CBM 作为 stdio MCP 服务接入 AstrBot 的配置对象。
+
+        CBM 默认以 stdio 方式运行 MCP 服务（不带参数启动），因此 AstrBot 只需
+        以可执行文件路径作为 ``command`` 即可；UI 版同样支持 stdio 形态。
+        """
         if not self.is_installed():
             raise CbmError("CBM 尚未安装")
-        if not key:
-            raise CbmError("缺少配置项名称")
-        proc = self._run_config(["set", key, _to_cli(value)], cache_dir)
-        if proc.returncode != 0:
-            raise CbmError(f"设置 {key} 失败: {(proc.stderr or proc.stdout).strip()}")
-
-    def config_reset(self, key: str, cache_dir: str | None = None) -> None:
-        if not self.is_installed():
-            raise CbmError("CBM 尚未安装")
-        if not key:
-            raise CbmError("缺少配置项名称")
-        proc = self._run_config(["reset", key], cache_dir)
-        if proc.returncode != 0:
-            raise CbmError(f"重置 {key} 失败: {(proc.stderr or proc.stdout).strip()}")
+        return {
+            name: {
+                "command": str(self.binary_path),
+                "args": [],
+                "env": {"CBM_CACHE_DIR": str(self.resolve_cache_dir())},
+            }
+        }
 
 
 # --------------------------------------------------------------------------- #
 # 辅助
 # --------------------------------------------------------------------------- #
-def _coerce(value: str, kind: str) -> Any:
-    value = value.strip()
-    if kind == "bool":
-        return value.lower() in ("1", "true", "yes", "on")
-    if kind == "int":
-        try:
-            return int(value)
-        except ValueError:
-            return value
-    return value
-
-
-def _to_cli(value: Any) -> str:
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    return str(value)

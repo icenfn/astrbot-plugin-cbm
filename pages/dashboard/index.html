@@ -56,13 +56,21 @@
             <button class="cbm-btn primary" id="btn-start">▶ 启动</button>
             <button class="cbm-btn" id="btn-stop">■ 停止</button>
             <button class="cbm-btn" id="btn-restart">⟳ 重启</button>
-            <button class="cbm-btn ghost hidden" id="btn-open-ui">打开可视化 ↗</button>
           </div>
-          <div class="cbm-uiurl hidden" id="ui-url-row">
+        </section>
+
+        <!-- WebUI 地址 -->
+        <section class="cbm-card span-2">
+          <div class="cbm-card-head">
+            <h2>WebUI 地址</h2>
+            <span class="cbm-tag" id="ui-state-tag">—</span>
+          </div>
+          <div class="cbm-uiurl" id="ui-url-row">
             <input type="text" id="ui-url-input" readonly />
             <button class="cbm-btn ghost mini" id="btn-copy-url">复制</button>
+            <a class="cbm-btn ghost mini" id="btn-open-ui" target="_blank" rel="noopener noreferrer">打开 ↗</a>
           </div>
-          <p class="cbm-hint hidden" id="ui-hint"></p>
+          <p class="cbm-hint" id="ui-hint">CBM 未运行，启动后将在此显示可视化地址。</p>
         </section>
 
         <!-- 安装 / 卸载 -->
@@ -105,22 +113,29 @@
           <p class="cbm-hint" id="install-hint"></p>
         </section>
 
-        <!-- 配置管理 -->
+        <!-- MCP 接入 -->
         <section class="cbm-card span-2">
           <div class="cbm-card-head">
-            <h2>CBM 配置</h2>
-            <button class="cbm-btn ghost" id="btn-load-config">读取</button>
+            <h2>接入 AstrBot MCP</h2>
+            <div class="cbm-log-actions">
+              <button class="cbm-btn ghost mini" id="btn-mcp-load">读取配置</button>
+              <button class="cbm-btn ghost mini" id="btn-mcp-copy">复制</button>
+              <button class="cbm-btn primary mini" id="btn-mcp-add">一键添加到 AstrBot</button>
+            </div>
           </div>
-          <div id="config-list" class="cbm-config-list">
-            <p class="cbm-empty">点击“读取”加载当前配置。</p>
-          </div>
+          <pre class="cbm-log cbm-mcp" id="mcp-snippet">尚未加载配置。</pre>
+          <p class="cbm-hint" id="mcp-status">将 CBM 作为 stdio MCP 服务写入 AstrBot 的 mcp_server.json；添加后可在「插件 → MCP」中查看，必要时重启生效。</p>
         </section>
 
         <!-- 日志 -->
         <section class="cbm-card span-2">
           <div class="cbm-card-head">
             <h2>运行日志</h2>
-            <button class="cbm-btn ghost" id="btn-load-logs">刷新日志</button>
+            <div class="cbm-log-actions">
+              <label class="cbm-check"><input type="checkbox" id="auto-logs" checked /><span>自动刷新</span></label>
+              <button class="cbm-btn ghost mini" id="btn-clear-logs">清除</button>
+              <button class="cbm-btn ghost mini" id="btn-load-logs">刷新</button>
+            </div>
           </div>
           <pre class="cbm-log" id="log-box">尚未加载日志。</pre>
         </section>
