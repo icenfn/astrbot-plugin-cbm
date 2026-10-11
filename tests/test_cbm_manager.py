@@ -96,6 +96,52 @@ def test_build_args():
     assert m._build_args("ui", 1234) == ["--ui=true", "--port=1234"]
 
 
+def test_default_mirror_constant():
+    assert cm.DEFAULT_MIRROR == "https://gh-proxy.com/"
+
+
+def test_apply_default_mirror():
+    url = "https://github.com/DeusData/codebase-memory-mcp/releases/download/v0.11.0/a.tgz"
+    assert cm.apply_mirror(url, cm.DEFAULT_MIRROR) == "https://gh-proxy.com/" + url
+
+
+def test_default_variant_is_ui(mgr):
+    # 未显式指定 variant 时，start/install 默认使用 ui
+    import inspect
+
+    assert inspect.signature(cm.CbmManager.install).parameters["variant"].default == "ui"
+    assert inspect.signature(cm.CbmManager.start).parameters["variant"].default == "ui"
+
+
+def test_list_releases_parsing(monkeypatch):
+    m = cm.CbmManager("/tmp/nope")
+    fake = [
+        {"tag_name": "v0.11.0", "name": "v0.11.0", "prerelease": False, "published_at": "x"},
+        {"tag_name": "v0.10.7", "name": "0.10.7", "prerelease": True, "published_at": "y"},
+        {"tag_name": "", "name": "bad"},
+    ]
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            import json as _j
+
+            return _j.dumps(fake).encode()
+
+    import urllib.request
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: _Resp())
+    releases = m.list_releases(10)
+    assert len(releases) == 2
+    assert releases[0]["version"] == "0.11.0"
+    assert releases[1]["prerelease"] is True
+
+
 def test_config_coerce_and_cli():
     assert cm._coerce("true", "bool") is True
     assert cm._coerce("false", "bool") is False

@@ -57,6 +57,7 @@ core = _load_core()
 CbmManager = core.CbmManager
 CbmError = core.CbmError
 DEFAULT_PORT = core.DEFAULT_PORT
+DEFAULT_MIRROR = core.DEFAULT_MIRROR
 KNOWN_CONFIG = core.KNOWN_CONFIG
 VARIANTS = core.VARIANTS
 
@@ -163,7 +164,9 @@ class CbmPlugin(Star):
         result = {
             "installed": self.manager.installed_info(),
             "latest": None,
+            "releases": [],
             "variants": list(VARIANTS),
+            "default_variant": self._cfg("variant", "ui"),
             "platform": {
                 "os": self.manager.os_name,
                 "arch": self.manager.arch,
@@ -173,6 +176,10 @@ class CbmPlugin(Star):
             result["latest"] = await self._call(self.manager.get_latest_version)
         except Exception as exc:  # noqa: BLE001
             result["latest_error"] = str(getattr(exc, "message", exc))
+        try:
+            result["releases"] = await self._call(self.manager.list_releases, 30)
+        except Exception as exc:  # noqa: BLE001
+            result["releases_error"] = str(getattr(exc, "message", exc))
         return json_response(result)
 
     # ------------------------------------------------------------------ #
@@ -180,9 +187,9 @@ class CbmPlugin(Star):
     # ------------------------------------------------------------------ #
     async def api_install(self):
         payload = await request.json(default={})
-        variant = str(payload.get("variant") or self._cfg("variant", "standard"))
+        variant = str(payload.get("variant") or self._cfg("variant", "ui"))
         version = str(payload.get("version") or self._cfg("version", "latest"))
-        mirror = str(payload.get("mirror") if payload.get("mirror") is not None else self._cfg("mirror", ""))
+        mirror = str(payload.get("mirror") if payload.get("mirror") is not None else self._cfg("mirror", DEFAULT_MIRROR))
 
         if variant not in VARIANTS:
             return error_response(f"未知的版本类型: {variant}")
@@ -246,7 +253,7 @@ class CbmPlugin(Star):
     # 运行控制
     # ------------------------------------------------------------------ #
     async def _resolve_run_options(self, payload: dict) -> tuple[str, int, str | None]:
-        variant = str(payload.get("variant") or self._cfg("variant", "standard"))
+        variant = str(payload.get("variant") or self._cfg("variant", "ui"))
         port = payload.get("port")
         if port is None:
             port = self._cfg_int("port", DEFAULT_PORT)
@@ -331,7 +338,7 @@ class CbmPlugin(Star):
     async def _auto_start(self) -> None:
         try:
             if self.manager.is_installed() and not self.manager.is_running():
-                variant = self._cfg("variant", "standard")
+                variant = self._cfg("variant", "ui")
                 port = self._cfg_int("port", DEFAULT_PORT)
                 cache_dir = self._cfg("cache_dir", "") or None
                 await self._call(self.manager.start, variant, port, cache_dir)

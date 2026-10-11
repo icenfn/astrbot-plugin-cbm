@@ -75,9 +75,19 @@
           <div class="cbm-field">
             <label>版本号</label>
             <div class="cbm-input-row">
-              <input type="text" id="in-version" placeholder="latest 或具体版本，如 0.11.0" value="latest" />
+              <select id="in-version" class="cbm-select">
+                <option value="latest">latest（最新稳定版）</option>
+              </select>
+              <button class="cbm-btn ghost mini" id="btn-reload-versions" title="重新获取版本列表">↻</button>
             </div>
             <p class="cbm-hint" id="version-hint">已安装：—</p>
+          </div>
+          <div class="cbm-field">
+            <label>下载镜像</label>
+            <div class="cbm-input-row">
+              <input type="text" id="in-mirror" placeholder="https://gh-proxy.com/" />
+            </div>
+            <p class="cbm-hint">用于加速 GitHub Release 下载。留空则直连 GitHub。</p>
           </div>
           <div class="cbm-progress hidden" id="install-progress">
             <div class="bar"><div class="bar-fill" id="bar-fill"></div></div>

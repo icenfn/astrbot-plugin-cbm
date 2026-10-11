@@ -164,10 +164,22 @@ def test_status_handler_returns_json():
 def test_versions_handler():
     plugin, _, _ = _make_plugin()
     plugin.manager.get_latest_version = lambda: "0.11.0"
+    plugin.manager.list_releases = lambda limit=30: [
+        {"tag": "v0.11.0", "version": "0.11.0", "name": "v0.11.0", "prerelease": False},
+        {"tag": "v0.10.8", "version": "0.10.8", "name": "v0.10.8", "prerelease": False},
+    ]
     result = asyncio.run(plugin.api_versions())
     assert result["kind"] == "json"
     assert result["data"]["latest"] == "0.11.0"
     assert set(result["data"]["variants"]) == {"standard", "ui"}
+    assert result["data"]["default_variant"] == "ui"
+    assert len(result["data"]["releases"]) == 2
+    assert result["data"]["releases"][0]["version"] == "0.11.0"
+
+
+def test_default_variant_ui_in_plugin():
+    plugin, _, _ = _make_plugin()
+    assert plugin._cfg("variant", "ui") == "ui"
 
 
 def test_install_invalid_variant_errors():

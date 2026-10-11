@@ -34,6 +34,8 @@ GITHUB_DL = "https://github.com"
 
 BIN_NAME = "codebase-memory-mcp"
 DEFAULT_PORT = 9749
+# 默认 GitHub 下载加速镜像（可自定义，留空则直连 GitHub）
+DEFAULT_MIRROR = "https://gh-proxy.com/"
 
 # 已知配置项及其类型（用于 WebUI 渲染与值转换）
 KNOWN_CONFIG: dict[str, str] = {
@@ -250,6 +252,33 @@ class CbmManager:
         except Exception as exc:  # noqa: BLE001
             raise CbmError(f"获取最新版本失败: {exc}", status_code=502) from exc
 
+    def list_releases(self, limit: int = 30) -> list[dict[str, Any]]:
+        """列出官方 Release（供版本选择）。返回按发布时间倒序的版本列表。"""
+        import urllib.request
+
+        url = f"{GITHUB_API}/repos/{REPO}/releases?per_page={max(1, int(limit))}"
+        req = urllib.request.Request(url, headers={"User-Agent": "astrbot-plugin-cbm"})
+        try:
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            raise CbmError(f"获取版本列表失败: {exc}", status_code=502) from exc
+        releases = []
+        for item in data:
+            tag = (item.get("tag_name") or "").strip()
+            if not tag:
+                continue
+            releases.append(
+                {
+                    "tag": tag,
+                    "version": tag.lstrip("v"),
+                    "name": item.get("name") or tag,
+                    "prerelease": bool(item.get("prerelease")),
+                    "published_at": item.get("published_at"),
+                }
+            )
+        return releases
+
     def _resolve_tag(self, version: str) -> str:
         version = (version or "latest").strip()
         if version in ("", "latest"):
@@ -325,7 +354,7 @@ class CbmManager:
 
     def install(
         self,
-        variant: str = "standard",
+        variant: str = "ui",
         version: str = "latest",
         mirror: str = "",
         progress: Callable | None = None,
@@ -441,7 +470,7 @@ class CbmManager:
 
     def start(
         self,
-        variant: str = "standard",
+        variant: str = "ui",
         port: int = DEFAULT_PORT,
         cache_dir: str | None = None,
     ) -> dict[str, Any]:
@@ -542,7 +571,7 @@ class CbmManager:
             variant
             or state.variant
             or self.installed_info().get("variant")
-            or "standard"
+            or "ui"
         )
         port = int(port or state.port or DEFAULT_PORT)
         cache_dir = cache_dir or state.cache_dir

@@ -10,7 +10,8 @@
 
 | 功能 | 说明 |
 | --- | --- |
-| **安装 / 卸载** | 可选 **标准版**（无界面 MCP 服务）或 **UI 版**（内置 3D 知识图谱可视化面板），并指定版本号；自动从官方 Release 下载并校验 **SHA-256**。 |
+| **安装 / 卸载** | 可选 **UI 版**（内置 3D 知识图谱可视化面板，**默认**）或 **标准版**（无界面 MCP 服务）；**版本号可从下拉列表选择**（含 latest 与历史版本）；自动从官方 Release 下载并强制校验 **SHA-256**。 |
+| **下载镜像** | 默认使用 `https://gh-proxy.com/` 加速下载，可在配置或面板中自定义；留空则直连 GitHub。 |
 | **运行控制** | 一键 **启动 / 停止 / 重启** CBM 服务进程。 |
 | **配置管理** | 图形化读写 CBM 的 `config`（`auto_index`、`auto_index_limit`、`auto_watch`、`watcher_enabled`、`ui_enabled`、`ui_port`、`ui-lang` 等），支持单项重置。 |
 | **状态显示** | 实时展示运行状态、版本、PID、端口、运行时长、数据目录与运行日志。 |
@@ -27,7 +28,7 @@
 ### 方式二：手动
 ```bash
 cd AstrBot/data/plugins
-git clone https://github.com/icenfn/astrbot_plugin_cbm
+git clone https://github.com/icenfn/astrbot-plugin-cbm
 ```
 随后在 WebUI → **插件管理** 中启用。
 
@@ -37,9 +38,9 @@ git clone https://github.com/icenfn/astrbot_plugin_cbm
 
 1. 打开 WebUI → **插件管理** → 找到 **Codebase Memory MCP 管理器** → 点击进入插件详情页。
 2. 打开 **「控制面板」** 页面。
-3. 在 **安装 / 卸载** 卡片中选择版本类型与版本号，点击 **安装 / 更新**。
+3. 在 **安装 / 卸载** 卡片中选择版本类型（默认 **UI 版**）与版本号（下拉选择），如需可修改 **下载镜像**，点击 **安装 / 更新**。
 4. 安装完成后，在 **运行状态** 卡片点击 **启动**。
-5. 如需可视化，安装 **UI 版** 并启动后，点击 **打开可视化 ↗**。
+5. 安装 **UI 版** 并启动后，点击 **打开可视化 ↗** 即可打开 3D 图谱面板。
 
 <br/>
 
@@ -47,9 +48,9 @@ git clone https://github.com/icenfn/astrbot_plugin_cbm
 
 | 配置项 | 类型 | 默认 | 说明 |
 | --- | --- | --- | --- |
-| `variant` | string | `standard` | 默认版本类型：`standard` / `ui`。 |
-| `version` | string | `latest` | 默认版本号，填 `latest` 使用最新稳定版。 |
-| `mirror` | string | *(空)* | 可选下载加速镜像，例如 `https://ghproxy.net/`；留空直连 GitHub。支持 `{url}` 占位符。 |
+| `variant` | string | `ui` | 默认版本类型：`ui` / `standard`。 |
+| `version` | string | `latest` | 默认版本号，填 `latest` 使用最新稳定版，或指定如 `0.10.8`。 |
+| `mirror` | string | `https://gh-proxy.com/` | 下载加速镜像，默认 `https://gh-proxy.com/`；留空直连 GitHub。支持 `{url}` 占位符，否则前缀拼接。 |
 | `cache_dir` | string | *(空)* | CBM 索引数据目录（`CBM_CACHE_DIR`）。留空使用 `~/.cache/codebase-memory-mcp`。 |
 | `port` | int | `9749` | UI 版 HTTP 服务端口。 |
 | `auto_start` | bool | `false` | 插件加载时自动启动 CBM。 |

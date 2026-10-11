@@ -119,11 +119,14 @@ body {
 }
 .seg-item.active { background: var(--panel); color: var(--primary); box-shadow: var(--shadow); }
 
-.cbm-input-row input {
+.cbm-input-row { display: flex; align-items: center; gap: 8px; }
+.cbm-input-row input, .cbm-input-row select {
   width: 100%; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--border);
   background: var(--panel-soft); color: var(--text); font-size: 13px; outline: none;
 }
-.cbm-input-row input:focus { border-color: var(--primary); }
+.cbm-input-row input:focus, .cbm-input-row select:focus { border-color: var(--primary); }
+.cbm-input-row .cbm-btn { flex: none; }
+.cbm-select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 18px) 52%, calc(100% - 13px) 52%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; padding-right: 34px; }
 
 .cbm-progress { margin: 4px 0 14px; }
 .cbm-progress .bar { height: 8px; background: var(--panel-soft); border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }

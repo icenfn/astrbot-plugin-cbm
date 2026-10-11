@@ -5,7 +5,8 @@ desc: |
   面板化管理 [codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp)（简称 CBM）——面向 AI 编码代理的代码记忆 / 知识图谱引擎。
 
   主要能力：
-  - **安装 / 卸载**：可选「标准版（无界面）」或「UI 版（内置 3D 图谱可视化）」以及具体版本，自动从官方 Release 下载并校验 SHA-256。
+  - **安装 / 卸载**：可选「UI 版（内置 3D 图谱可视化，默认）」或「标准版（无界面）」，可指定具体版本（下拉选择），自动从官方 Release 下载并强制校验 SHA-256。
+  - **下载镜像**：默认使用 https://gh-proxy.com/ 加速下载，支持自定义镜像。
   - **运行控制**：启动 / 停止 / 重启 CBM 服务进程，实时查看运行状态。
   - **配置管理**：读写 CBM 的 `config` 项（auto_index、auto_index_limit、auto_watch 等），并管理数据缓存目录。
   - **状态显示**：实时展示进程状态、监听端口、版本、数据目录与运行日志。
@@ -13,7 +14,7 @@ desc: |
   在插件详情页打开「控制面板」即可使用全部功能。
 version: 1.0.0
 author: icenfn
-repo: https://github.com/icenfn/astrbot_plugin_cbm
+repo: https://github.com/icenfn/astrbot-plugin-cbm
 astrbot_version: ">=4.5.0"
 tags:
   - 工具

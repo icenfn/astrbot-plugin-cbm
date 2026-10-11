@@ -4,7 +4,7 @@
 const bridge = window.AstrBotPluginPage;
 
 const $ = (id) => document.getElementById(id);
-const state = { variant: "standard", installPolling: null };
+const state = { variant: "ui", installPolling: null };
 
 // --------------------------- 通用工具 --------------------------- //
 function toast(msg, type = "") {
@@ -154,12 +154,14 @@ function startInstallPolling() {
 
 async function doInstall() {
   const version = $("in-version").value.trim() || "latest";
+  const mirror = ($("in-mirror") ? $("in-mirror").value.trim() : "");
   const btn = $("btn-install");
   busy(btn, true);
   try {
     await bridge.apiPost("install", {
       variant: state.variant,
       version,
+      mirror,
     });
     toast("已开始安装，请稍候…");
     startInstallPolling();
@@ -326,23 +328,60 @@ function bind() {
     el.addEventListener("click", () => setVariant(el.dataset.value));
   });
 
-  // 未安装时自动加载可用版本提示
-  $("btn-install").addEventListener(
-    "mouseenter",
-    async () => {
-      if (state._versionsLoaded) return;
-      state._versionsLoaded = true;
-      try {
-        const v = await bridge.apiGet("versions");
-        if (v.latest) {
-          $("in-version").placeholder = `latest（当前最新 v${v.latest}）`;
-        }
-      } catch (e) {
-        /* 忽略 */
-      }
-    },
-    { once: true },
-  );
+  if ($("btn-reload-versions")) {
+    $("btn-reload-versions").addEventListener("click", () =>
+      loadVersions(true),
+    );
+  }
+  loadVersions(false);
+  loadMirrorDefault();
+}
+
+// 加载可用版本列表到下拉框
+async function loadVersions(force) {
+  if (state._versionsLoaded && !force) return;
+  state._versionsLoaded = true;
+  const sel = $("in-version");
+  if (!sel) return;
+  try {
+    const v = await bridge.apiGet("versions");
+    const current = sel.value;
+    // 保留 latest，追加 releases
+    sel.innerHTML = '<option value="latest">latest（最新稳定版）</option>';
+    const list = v.releases || [];
+    list.forEach((r) => {
+      const opt = document.createElement("option");
+      opt.value = r.version;
+      opt.textContent =
+        "v" + r.version + (r.prerelease ? "（预发布）" : "");
+      sel.appendChild(opt);
+    });
+    // 恢复原选择（若仍存在）
+    if ([...sel.options].some((o) => o.value === current)) {
+      sel.value = current;
+    }
+    if (v.latest) {
+      const first = sel.options[0];
+      if (first) first.textContent = `latest（最新稳定版 v${v.latest}）`;
+    }
+  } catch (e) {
+    /* 静默：仍可手动输入 latest */
+  }
+}
+
+// 读取插件默认镜像填入输入框，保证安装时使用默认值
+async function loadMirrorDefault() {
+  const box = $("in-mirror");
+  if (!box || box.value) return;
+  try {
+    const v = await bridge.apiGet("status");
+    if (v && v.install_info && v.install_info.mirror) {
+      box.value = v.install_info.mirror;
+    }
+  } catch (e) {
+    /* 忽略 */
+  }
+  if (!box.value) box.value = "https://gh-proxy.com/";
 }
 
 // --------------------------- 启动 --------------------------- //
