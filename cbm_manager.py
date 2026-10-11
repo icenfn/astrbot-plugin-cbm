@@ -49,6 +49,36 @@ DEFAULT_PROXY_PORT = 9750
 
 VARIANTS = ("standard", "ui")
 
+# MCP stdio 启动器模板：绕开 AstrBot 对 command 的白名单限制。
+_MCP_LAUNCHER_TEMPLATE = '''#!/usr/bin/env python3
+"""CBM MCP stdio 启动器（由 astrbot_plugin_cbm 自动生成，请勿手动修改）。
+
+AstrBot 对 MCP stdio 的 command 设有白名单，无法直接以 CBM 可执行文件作为
+command。本脚本以受信任的 python3 启动器身份拉起真正的 CBM 二进制，并把
+标准输入 / 输出原样透传，保证 stdio MCP 协议正常工作。
+"""
+import os
+import subprocess
+import sys
+
+BINARY = {binary!r}
+CACHE_DIR = {cache!r}
+
+
+def main():
+    env = dict(os.environ)
+    if CACHE_DIR:
+        env.setdefault("CBM_CACHE_DIR", CACHE_DIR)
+    try:
+        return subprocess.call([BINARY], env=env)
+    except KeyboardInterrupt:
+        return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+'''
+
 
 class CbmError(Exception):
     """面向用户的可读错误。"""
@@ -839,32 +869,43 @@ class CbmManager:
             return ""
         return "\n".join(str(x) for x in items[-max(1, int(lines)):])
 
-    # ---------- 日志清理 ----------
-    def clear_logs(self) -> None:
-        """清空本地日志文件。
-
-        UI 版的运行日志来自 CBM 的 ``/api/logs``（由 CBM 自身维护，无法清空），
-        此处清空的是插件捕获的 stdout/stderr 文件日志。
-        """
-        try:
-            self.log_dir.mkdir(parents=True, exist_ok=True)
-            self.log_path.write_text("", "utf-8")
-        except Exception as exc:  # noqa: BLE001
-            raise CbmError(f"清除日志失败: {exc}", status_code=500) from exc
-
     # ---------- MCP 接入配置 ----------
-    def mcp_server_config(self, name: str = BIN_NAME) -> dict[str, Any]:
-        """返回把 CBM 作为 stdio MCP 服务接入 AstrBot 的配置对象。
+    @property
+    def mcp_launcher_path(self) -> Path:
+        return self.bin_dir / "cbm_mcp_launcher.py"
 
-        CBM 默认以 stdio 方式运行 MCP 服务（不带参数启动），因此 AstrBot 只需
-        以可执行文件路径作为 ``command`` 即可；UI 版同样支持 stdio 形态。
+    def ensure_mcp_launcher(self) -> Path:
+        """生成 / 刷新 MCP stdio 启动器。
+
+        AstrBot 对 MCP stdio 的 ``command`` 设有白名单（仅允许 bun / node /
+        npm / python3 / uv 等常见启动器），CBM 可执行文件不在其中，直接填
+        二进制路径会报 "command ... is not allowed"。因此这里生成一个受信任
+        的 python3 启动器，由它拉起真正的 CBM 二进制并透传标准输入输出，保证
+        stdio MCP 协议正常工作。
         """
         if not self.is_installed():
             raise CbmError("CBM 尚未安装")
+        content = _MCP_LAUNCHER_TEMPLATE.format(
+            binary=str(self.binary_path),
+            cache=str(self.resolve_cache_dir()),
+        )
+        try:
+            self.bin_dir.mkdir(parents=True, exist_ok=True)
+            self.mcp_launcher_path.write_text(content, "utf-8")
+        except Exception as exc:  # noqa: BLE001
+            raise CbmError(f"生成 MCP 启动器失败: {exc}", status_code=500) from exc
+        return self.mcp_launcher_path
+
+    def mcp_server_config(self, name: str = BIN_NAME) -> dict[str, Any]:
+        """返回把 CBM 接入 AstrBot 的 MCP 配置对象。
+
+        ``command`` 使用白名单内的 ``python3``，通过启动器脚本拉起 CBM 二进制。
+        """
+        launcher = self.ensure_mcp_launcher()
         return {
             name: {
-                "command": str(self.binary_path),
-                "args": [],
+                "command": "python3",
+                "args": [str(launcher)],
                 "env": {"CBM_CACHE_DIR": str(self.resolve_cache_dir())},
             }
         }

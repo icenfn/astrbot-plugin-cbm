@@ -245,16 +245,8 @@ def test_read_logs(mgr_with_bin):
 
 
 # --------------------------------------------------------------------------- #
-# 日志清理 & MCP 接入
+# MCP 接入
 # --------------------------------------------------------------------------- #
-def test_clear_logs(mgr_with_bin):
-    m = mgr_with_bin
-    m.log_dir.mkdir(parents=True, exist_ok=True)
-    m.log_path.write_text("some log line\n", "utf-8")
-    m.clear_logs()
-    assert m.log_path.read_text("utf-8") == ""
-
-
 def test_mcp_server_config_requires_install(mgr):
     with pytest.raises(cm.CbmError):
         mgr.mcp_server_config()
@@ -265,9 +257,13 @@ def test_mcp_server_config_shape(mgr_with_bin):
     cfg = m.mcp_server_config()
     assert cm.BIN_NAME in cfg
     entry = cfg[cm.BIN_NAME]
-    assert entry["command"] == str(m.binary_path)
-    assert entry["args"] == []
+    # AstrBot 对 stdio command 有白名单，必须使用受信任的 python3 启动器
+    assert entry["command"] == "python3"
+    assert entry["args"] == [str(m.mcp_launcher_path)]
     assert "CBM_CACHE_DIR" in entry["env"]
+    assert m.mcp_launcher_path.exists()
+    launcher = m.mcp_launcher_path.read_text("utf-8")
+    assert str(m.binary_path) in launcher
 
 
 # --------------------------------------------------------------------------- #

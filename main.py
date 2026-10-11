@@ -145,7 +145,6 @@ class CbmPlugin(Star):
             (f"{P}/stop", self.api_stop, ["POST"], "停止 CBM"),
             (f"{P}/restart", self.api_restart, ["POST"], "重启 CBM"),
             (f"{P}/logs", self.api_logs, ["GET"], "读取运行日志"),
-            (f"{P}/logs/clear", self.api_logs_clear, ["POST"], "清除运行日志"),
             (f"{P}/mcp", self.api_mcp_config, ["GET"], "获取 MCP 接入配置"),
             (f"{P}/mcp/add", self.api_mcp_add, ["POST"], "写入 AstrBot MCP 配置"),
         ]
@@ -356,17 +355,6 @@ class CbmPlugin(Star):
             return self._err(exc)
         logger.info(f"CBM 已重启：variant={variant} port={port}")
         return json_response({"ok": True, **data, "ui_proxy": proxy})
-
-    # ------------------------------------------------------------------ #
-    # 日志清理
-    # ------------------------------------------------------------------ #
-    async def api_logs_clear(self):
-        try:
-            await self._call(self.manager.clear_logs)
-        except Exception as exc:  # noqa: BLE001
-            return self._err(exc)
-        logger.info("CBM 运行日志已清除")
-        return json_response({"ok": True})
 
     # ------------------------------------------------------------------ #
     # MCP 接入 AstrBot

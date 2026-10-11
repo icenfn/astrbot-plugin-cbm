@@ -180,6 +180,9 @@ function switchTab(name) {
     el.classList.toggle("active", el.dataset.panel === name);
   });
   state.tab = name;
+  // 切到 MCP / 日志标签页时自动加载对应内容并启动自动刷新。
+  if (name === "mcp") loadMcp(true);
+  if (name === "logs") loadLogs(true);
 }
 
 // --------------------------- 版本类型选择 --------------------------- //
@@ -306,22 +309,23 @@ async function doRun(action) {
 }
 
 // --------------------------- MCP 接入 --------------------------- //
-async function loadMcp() {
+async function loadMcp(silent = false) {
   const box = $("mcp-snippet");
-  box.textContent = "加载中…";
+  if (!silent) box.textContent = "加载中…";
   try {
     const data = await bridge.apiGet("mcp");
     state.mcpSnippet = data.snippet || "";
-    box.textContent = data.snippet || "（无法生成配置）";
+    const text = data.snippet || "（无法生成配置）";
+    if (box.textContent !== text) box.textContent = text;
     const st = $("mcp-status");
     if (st) st.dataset.path = data.config_path || "";
   } catch (e) {
-    box.textContent = "读取失败：" + e.message;
+    if (!silent) box.textContent = "读取失败：" + e.message;
   }
 }
 
 async function copyMcp() {
-  if (!state.mcpSnippet) await loadMcp();
+  if (!state.mcpSnippet) await loadMcp(true);
   if (!state.mcpSnippet) return;
   let ok = false;
   if (navigator.clipboard) {
@@ -363,23 +367,6 @@ async function loadLogs(silent = false) {
   }
 }
 
-async function clearLogs() {
-  const res = await confirmModal({
-    title: "清除日志",
-    message: "确定要清空当前运行日志吗？（不影响 CBM 运行）",
-    okText: "清除",
-    danger: true,
-  });
-  if (!res.ok) return;
-  try {
-    await bridge.apiPost("logs/clear", {});
-    toast("日志已清除", "ok");
-    loadLogs();
-  } catch (e) {
-    toast("清除失败：" + e.message, "err");
-  }
-}
-
 function setLogAutoRefresh(on) {
   if (state.logTimer) {
     clearInterval(state.logTimer);
@@ -402,9 +389,7 @@ function bind() {
   $("btn-reinstall").addEventListener("click", doInstall);
   $("btn-uninstall").addEventListener("click", doUninstall);
   $("btn-load-logs").addEventListener("click", () => loadLogs(false));
-  $("btn-clear-logs").addEventListener("click", clearLogs);
   $("auto-logs").addEventListener("change", (e) => setLogAutoRefresh(e.target.checked));
-  $("btn-mcp-load").addEventListener("click", loadMcp);
   $("btn-mcp-copy").addEventListener("click", copyMcp);
   $("btn-mcp-add").addEventListener("click", addMcp);
 
@@ -478,8 +463,11 @@ async function loadMirrorDefault() {
   }
   bind();
   refreshStatus();
-  // 每 5 秒轮询一次状态
+  loadMcp(true);
+  // 每 5 秒轮询一次状态；运行中时同步刷新 MCP 配置。
   setInterval(() => {
-    if (!document.hidden) refreshStatus();
+    if (document.hidden) return;
+    refreshStatus();
+    if (state.tab === "mcp") loadMcp(true);
   }, 5000);
 })();
