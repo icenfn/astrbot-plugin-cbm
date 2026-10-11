@@ -434,7 +434,12 @@ class CbmPlugin(Star):
         try:
             if not self.manager.is_installed():
                 return
-            variant = self._cfg("variant", "ui")
+            # 以「实际安装的版本类型」为准，避免配置项与已安装版本不一致时，
+            # 把 UI 版当作标准版启动（从而不启动可视化面板）。
+            variant = (
+                self.manager.installed_info().get("variant")
+                or self._cfg("variant", "ui")
+            )
             port = self._cfg_int("port", DEFAULT_PORT)
             cache_dir = self._cfg("cache_dir", "") or None
             if not self.manager.is_running():

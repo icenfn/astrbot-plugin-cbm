@@ -154,6 +154,9 @@ body {
 
 .hidden { display: none !important; }
 
+/* 顶部控制栏（位于标签页之外） */
+.cbm-runbar { display: flex; gap: 10px; margin: 16px 0 2px; flex-wrap: wrap; }
+
 /* 标签页导航 */
 .cbm-tabs {
   display: flex; gap: 4px; margin: 18px 0 16px;

@@ -141,9 +141,10 @@ function renderStatus(s) {
     ? "已安装。可重新安装 / 更新以切换版本或版本类型。"
     : "尚未安装，点击“安装”即可下载。";
 
-  // 按钮可用性
-  $("btn-start").disabled = !installed || running;
-  $("btn-stop").disabled = !running;
+  // 顶部控制栏：启动 / 停止 只显示其一，重启常驻。
+  $("btn-start").classList.toggle("hidden", running);
+  $("btn-stop").classList.toggle("hidden", !running);
+  $("btn-start").disabled = !installed;
   $("btn-restart").disabled = !installed;
 
   // WebUI 地址（经插件反向代理对外暴露；CBM 自身仅监听 127.0.0.1）

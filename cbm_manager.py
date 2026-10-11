@@ -360,6 +360,9 @@ class CbmManager:
         self._popen: subprocess.Popen | None = None
         self._proxy: UiProxy | None = None
         self._proxy_target: int | None = None
+        # 串行化 启动/停止 等修改进程状态的操作，避免并发调用（如插件热重载时
+        # 的自动启动任务与手动操作）相互干扰。
+        self._proc_lock = threading.RLock()
 
     # ---------- 基础路径 ----------
     @property
@@ -698,7 +701,7 @@ class CbmManager:
         args = [str(self.binary_path), *self._build_args(variant, port)]
         log_fh = open(self.log_path, "ab", buffering=0)
         try:
-            self._popen = subprocess.Popen(
+            proc = subprocess.Popen(
                 args,
                 stdin=subprocess.PIPE,
                 stdout=log_fh,
@@ -709,10 +712,12 @@ class CbmManager:
             )
         finally:
             log_fh.close()
+        self._popen = proc
 
         time.sleep(1.5)
-        if self._popen.poll() is not None:
-            self._popen = None
+        if proc.poll() is not None:
+            if self._popen is proc:
+                self._popen = None
             tail = self.read_logs(30)
             raise CbmError(f"CBM 启动后立即退出。日志:\n{tail}", status_code=500)
 
@@ -720,7 +725,7 @@ class CbmManager:
         ui_port: int | None = int(port) if variant == "ui" else None
 
         state = CbmState(
-            pid=self._popen.pid,
+            pid=proc.pid,
             variant=variant,
             version=self.installed_info().get("version"),
             port=ui_port,
