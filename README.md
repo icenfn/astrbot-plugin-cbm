@@ -2,7 +2,7 @@
 
 > 在 AstrBot WebUI 中一站式管理 **Codebase Memory MCP**（CBM）—— 面向 AI 编码代理的代码记忆 / 知识图谱引擎，无需登录服务器敲命令。
 
-面板采用 **标签页** 布局（概览 / 安装 / MCP 接入 / 安全 / 日志）。
+面板采用 **标签页** 布局（概览 / 安装 / MCP 接入 / 调优 / 安全 / 日志）。
 
 ## ✨ 功能
 
@@ -14,6 +14,7 @@
 | **可视化访问** | 内置反向代理，把 CBM 面板对外暴露，远程浏览器也能打开 3D 图谱。 |
 | **访问鉴权** | 为可视化反向代理开启 **HTTP Basic Auth**，暴露公网时需用户名/密码才能访问。 |
 | **接入 AstrBot MCP** | 一键把 CBM 写入 AstrBot 的 MCP 配置（`data/mcp_server.json`），或复制 JSON 手动添加。 |
+| **运行时调优** | 在面板「调优」页设置 CBM 的内存预算 `budget_mb`、并行任务数 `physical_job_limit` 等，启动/重启后自动注入生效。 |
 | **日志 / 状态** | 实时展示状态、版本、PID、端口、数据目录与运行日志，支持**自动刷新**。 |
 
 ## 📦 安装插件
@@ -28,13 +29,18 @@ git clone https://github.com/icenfn/astrbot-plugin-cbm
 ## 🚀 使用
 
 1. WebUI → **插件管理** → **Codebase Memory MCP 管理器** → 进入插件详情页 → 打开 **「控制面板」**。
-2. 面板顶部有 **概览 / 安装 / MCP 接入 / 安全 / 日志** 五个标签页，按需切换。顶部工具条提供 **启动 / 停止 / 重启**（启动与停止按运行状态二选一显示）。
+2. 面板顶部有 **概览 / 安装 / MCP 接入 / 调优 / 安全 / 日志** 六个标签页，按需切换。顶部工具条提供 **启动 / 停止 / 重启**（启动与停止按运行状态二选一显示）。
 3. **安装** 页：选择版本类型（默认 **UI 版**）与版本号，如需可修改 **下载镜像**，点击 **安装**。
 4. **概览** 页：在 **运行状态** 卡片查看状态 / 版本 / PID / 端口 / 数据目录 / **WebUI 地址**，并 **启动 / 停止 / 重启**。
 5. UI 版启动后，**WebUI 地址** 会显示在运行状态卡片中，复制到浏览器打开即可（CBM 面板无法内嵌到当前页面）。
 6. **MCP 接入** 页会自动加载并刷新 CBM 的 MCP 配置；点击 **添加到 AstrBot** 即可写入；也可 **复制** JSON 手动添加。重启 AstrBot 后生效。
-7. **安全** 页：勾选 **启用访问鉴权** 并设置用户名 / 密码后点击 **保存并生效**；若面板正在运行，反向代理会自动重载使鉴权立即生效。
-8. **日志** 页：查看运行日志，支持 **自动刷新**（每 5 秒）。
+7. **调优** 页：设置 CBM 运行时参数（留空表示自动/默认），保存后 **重启 CBM 生效**：
+   - `budget_mb` → `CBM_MEM_BUDGET_MB`：内存图谱上限（MiB），超限写磁盘；
+   - `physical_job_limit` → `CBM_WORKERS`：并行索引线程数（1–256）；
+   - `CBM_RETAIN_TOTAL_MB` / `CBM_RETAIN_PER_FILE_MB`：索引阶段提取保留预算；
+   - `CBM_MAX_FILE_BYTES`：跳过超大文件；`CBM_LOG_LEVEL`：日志级别。
+8. **安全** 页：勾选 **启用访问鉴权** 并设置用户名 / 密码后点击 **保存并生效**；若面板正在运行，反向代理会自动重载使鉴权立即生效。
+9. **日志** 页：查看运行日志，支持 **自动刷新**（每 5 秒）。
 
 ## ⚙️ 插件配置（`_conf_schema.json`）
 
@@ -50,6 +56,8 @@ git clone https://github.com/icenfn/astrbot-plugin-cbm
 | `ui_proxy_auth_enabled` | bool | `false` | 为可视化反向代理启用 HTTP Basic Auth。 |
 | `ui_proxy_auth_username` | string | `admin` | 访问鉴权用户名。 |
 | `ui_proxy_auth_password` | string | *(空)* | 访问鉴权密码；留空则鉴权不生效，建议在「安全」标签页中设置。 |
+
+> 运行时调优项（`CBM_MEM_BUDGET_MB`、`CBM_WORKERS` 等）不在插件配置项中，而在面板 **调优** 标签页设置，保存于插件数据目录 `runtime_env.json`，在 CBM 启动/MCP 接入时注入环境变量，重启后生效。
 | `auto_start` | bool | `false` | 插件加载时自动启动 CBM。 |
 | `stop_on_unload` | bool | `true` | 停用 / 卸载插件时自动停止 CBM。 |
 | `purge_data_on_uninstall` | bool | `false` | 卸载 CBM 时是否一并删除索引数据。 |

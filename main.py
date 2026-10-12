@@ -160,6 +160,8 @@ class CbmPlugin(Star):
             (f"{P}/mcp/add", self.api_mcp_add, ["POST"], "写入 AstrBot MCP 配置"),
             (f"{P}/auth", self.api_auth_get, ["GET"], "读取面板访问鉴权配置"),
             (f"{P}/auth/save", self.api_auth_save, ["POST"], "保存面板访问鉴权配置"),
+            (f"{P}/runtime", self.api_runtime_get, ["GET"], "读取 CBM 运行时调优项"),
+            (f"{P}/runtime/save", self.api_runtime_save, ["POST"], "保存 CBM 运行时调优项"),
         ]
         for route, handler, methods, desc in routes:
             self.context.register_web_api(route, handler, methods, desc)
@@ -440,6 +442,40 @@ class CbmPlugin(Star):
         )
         return json_response(
             {"ok": True, "enabled": enabled, "reloaded": reloaded}
+        )
+
+    # ------------------------------------------------------------------ #
+    # CBM 运行时调优（budget_mb / physical_job_limit 等）
+    # ------------------------------------------------------------------ #
+    async def api_runtime_get(self):
+        """返回运行时调优项定义与当前值。"""
+        try:
+            settings = await self._call(self.manager.runtime_settings)
+        except Exception as exc:  # noqa: BLE001
+            return self._err(exc)
+        status = self.manager.status()
+        return json_response(
+            {
+                "settings": settings,
+                "running": bool(status.get("running")),
+                "cache_dir": str(self.manager.resolve_cache_dir()),
+            }
+        )
+
+    async def api_runtime_save(self):
+        """保存运行时调优项；这些变量在 CBM 下次启动时生效。"""
+        payload = await request.json(default={})
+        values = payload.get("values") if isinstance(payload, dict) else None
+        if not isinstance(values, dict):
+            return error_response("请求缺少 values 对象")
+        try:
+            saved = await self._call(self.manager.save_runtime_env, values)
+        except Exception as exc:  # noqa: BLE001
+            return self._err(exc)
+        running = bool(self.manager.status().get("running"))
+        logger.info(f"CBM 运行时调优已保存：{saved}（需重启 CBM 生效）")
+        return json_response(
+            {"ok": True, "values": saved, "needs_restart": running and bool(saved)}
         )
 
     # ------------------------------------------------------------------ #

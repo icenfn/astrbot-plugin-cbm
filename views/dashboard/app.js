@@ -182,9 +182,10 @@ function switchTab(name) {
     el.classList.toggle("active", el.dataset.panel === name);
   });
   state.tab = name;
-  // 切到 MCP / 日志 / 安全标签页时自动加载对应内容并启动自动刷新。
+  // 切到 MCP / 日志 / 安全 / 调优标签页时自动加载对应内容。
   if (name === "mcp") loadMcp(true);
   if (name === "security") loadAuth(true);
+  if (name === "tuning") loadTuning(true);
   if (name === "logs") loadLogs(true);
 }
 
@@ -418,6 +419,136 @@ async function saveAuth() {
   }
 }
 
+// --------------------------- 调优（运行时环境变量） --------------------------- //
+function renderTuningFields(settings) {
+  const box = $("tuning-fields");
+  if (!box) return;
+  const prev = state._tuningInputs || {};
+  box.innerHTML = "";
+  state._tuningInputs = {};
+  (settings || []).forEach((s) => {
+    const field = document.createElement("div");
+    field.className = "cbm-field";
+
+    const label = document.createElement("label");
+    label.textContent = s.label + "（" + s.env + "）";
+    field.appendChild(label);
+
+    const row = document.createElement("div");
+    row.className = "cbm-input-row";
+
+    let input;
+    if (s.type === "enum") {
+      input = document.createElement("select");
+      const auto = document.createElement("option");
+      auto.value = "";
+      auto.textContent = "自动 / 默认";
+      input.appendChild(auto);
+      (s.options || []).forEach((opt) => {
+        const o = document.createElement("option");
+        o.value = opt;
+        o.textContent = opt;
+        input.appendChild(o);
+      });
+      if (s.value != null) input.value = String(s.value);
+    } else {
+      input = document.createElement("input");
+      input.type = "number";
+      if (s.min != null) input.min = String(s.min);
+      if (s.max != null) input.max = String(s.max);
+      input.placeholder = "自动 / 默认";
+      const cur = prev[s.key] != null ? prev[s.key] : s.value;
+      if (cur != null) input.value = String(cur);
+    }
+    input.dataset.key = s.key;
+    state._tuningInputs[s.key] = input;
+    input.addEventListener("input", () => {
+      state._tuningDirty = true;
+    });
+    input.addEventListener("change", () => {
+      state._tuningDirty = true;
+    });
+    row.appendChild(input);
+    field.appendChild(row);
+
+    const hint = document.createElement("p");
+    hint.className = "cbm-hint";
+    hint.textContent = s.hint;
+    field.appendChild(hint);
+
+    box.appendChild(field);
+  });
+}
+
+async function loadTuning(silent = false) {
+  try {
+    const data = await bridge.apiGet("runtime");
+    const tag = $("tuning-tag");
+    if (tag) {
+      const n = (data.settings || []).filter((s) => s.value != null).length;
+      tag.textContent = n > 0 ? "已自定义 " + n + " 项" : "全部自动";
+    }
+    // 用户正在编辑时不覆盖，避免轮询打断输入。
+    if (!state._tuningDirty) {
+      state._tuningInputs = {};
+      renderTuningFields(data.settings);
+    }
+  } catch (e) {
+    if (!silent) toast("读取调优配置失败：" + e.message, "err");
+  }
+}
+
+function collectTuningValues() {
+  const values = {};
+  const inputs = state._tuningInputs || {};
+  Object.keys(inputs).forEach((key) => {
+    const el = inputs[key];
+    values[key] = (el.value || "").trim();
+  });
+  return values;
+}
+
+async function saveTuning() {
+  const btn = $("btn-save-tuning");
+  busy(btn, true);
+  try {
+    const res = await bridge.apiPost("runtime/save", { values: collectTuningValues() });
+    state._tuningDirty = false;
+    const n = Object.keys(res.values || {}).length;
+    toast(
+      n > 0
+        ? "调优已保存，重启 CBM 后生效"
+        : "已保存（全部为自动/默认值）",
+      "ok",
+    );
+    await loadTuning(true);
+  } catch (e) {
+    toast("保存失败：" + e.message, "err");
+  } finally {
+    busy(btn, false);
+  }
+}
+
+async function resetTuning() {
+  const btn = $("btn-reset-tuning");
+  busy(btn, true);
+  try {
+    const values = {};
+    Object.keys(state._tuningInputs || {}).forEach((key) => {
+      values[key] = "";
+    });
+    const res = await bridge.apiPost("runtime/save", { values });
+    state._tuningDirty = false;
+    toast("已恢复为自动/默认值，重启 CBM 后生效", "ok");
+    await loadTuning(true);
+    void res;
+  } catch (e) {
+    toast("重置失败：" + e.message, "err");
+  } finally {
+    busy(btn, false);
+  }
+}
+
 // --------------------------- 日志 --------------------------- //
 async function loadLogs(silent = false) {
   const box = $("log-box");
@@ -468,6 +599,9 @@ function bind() {
   $("auth-username").addEventListener("input", markAuthDirty);
   $("auth-password").addEventListener("input", markAuthDirty);
   $("btn-save-auth").addEventListener("click", saveAuth);
+
+  $("btn-save-tuning").addEventListener("click", saveTuning);
+  $("btn-reset-tuning").addEventListener("click", resetTuning);
 
   document.querySelectorAll("#cbm-tabs .cbm-tab").forEach((el) => {
     el.addEventListener("click", () => switchTab(el.dataset.tab));

@@ -48,6 +48,7 @@
         <button class="cbm-tab active" data-tab="overview" role="tab">概览</button>
         <button class="cbm-tab" data-tab="install" role="tab">安装</button>
         <button class="cbm-tab" data-tab="mcp" role="tab">MCP 接入</button>
+        <button class="cbm-tab" data-tab="tuning" role="tab">调优</button>
         <button class="cbm-tab" data-tab="security" role="tab">安全</button>
         <button class="cbm-tab" data-tab="logs" role="tab">日志</button>
       </nav>
@@ -130,6 +131,31 @@
               </div>
               <pre class="cbm-log cbm-mcp" id="mcp-snippet">尚未加载配置。</pre>
               <p class="cbm-hint" id="mcp-status">将 CBM 作为 stdio MCP 服务写入 AstrBot 的 mcp_server.json；添加后可在「插件 → MCP」中查看，必要时重启生效。</p>
+            </section>
+          </div>
+        </section>
+
+        <!-- 调优 -->
+        <section class="cbm-panel" data-panel="tuning">
+          <div class="cbm-grid">
+            <section class="cbm-card span-2">
+              <div class="cbm-card-head">
+                <h2>运行时调优</h2>
+                <span class="cbm-tag" id="tuning-tag">—</span>
+              </div>
+              <p class="cbm-hint">
+                这些值通过环境变量注入 CBM 进程（<code>budget_mb</code> → <code>CBM_MEM_BUDGET_MB</code>、
+                <code>physical_job_limit</code> → <code>CBM_WORKERS</code> 等），在 CBM <strong>下次启动时生效</strong>。
+                留空表示使用 CBM 的自动/默认值。
+              </p>
+              <div id="tuning-fields"></div>
+              <div class="cbm-row">
+                <button class="cbm-btn primary" id="btn-save-tuning">保存</button>
+                <button class="cbm-btn" id="btn-reset-tuning">全部恢复自动</button>
+              </div>
+              <p class="cbm-hint" id="tuning-status">
+                保存后需重启 CBM（停止后再启动）才会应用新的调优值。
+              </p>
             </section>
           </div>
         </section>

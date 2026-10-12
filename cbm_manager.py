@@ -51,6 +51,73 @@ DEFAULT_PROXY_PORT = 9750
 
 VARIANTS = ("standard", "ui")
 
+# 可由插件注入到 CBM 启动环境的运行时调优项。
+# 这些均为 CBM 官方支持的「进程级环境变量」，在 CBM 启动时读取、重启后生效。
+# 键与取值范围对齐 CBM 源码 src/cli/runtime_settings.c 中的设置注册表。
+RUNTIME_ENV_SPECS: tuple[dict[str, Any], ...] = (
+    {
+        "key": "CBM_MEM_BUDGET_MB",
+        "env": "CBM_MEM_BUDGET_MB",
+        "label": "内存预算 budget_mb（MiB）",
+        "type": "int",
+        "min": 1,
+        "max": 2147483647,
+        "default": None,
+        "hint": "内存图谱上限（MiB），超限写磁盘。留空表示自动（按物理内存比例计算）。",
+    },
+    {
+        "key": "CBM_WORKERS",
+        "env": "CBM_WORKERS",
+        "label": "并行任务数 physical_job_limit（1–256）",
+        "type": "int",
+        "min": 1,
+        "max": 256,
+        "default": None,
+        "hint": "并行索引工作线程数。留空表示自动（按可用 CPU 核心数）。",
+    },
+    {
+        "key": "CBM_RETAIN_TOTAL_MB",
+        "env": "CBM_RETAIN_TOTAL_MB",
+        "label": "提取保留总预算（MiB）",
+        "type": "int",
+        "min": 1,
+        "max": 2147483647,
+        "default": None,
+        "hint": "索引阶段提取结果的内存保留总量。留空表示自动（内存预算的 1/8，且不超过 1024 MiB）。",
+    },
+    {
+        "key": "CBM_RETAIN_PER_FILE_MB",
+        "env": "CBM_RETAIN_PER_FILE_MB",
+        "label": "单文件保留预算（MiB）",
+        "type": "int",
+        "min": 1,
+        "max": 2147483647,
+        "default": None,
+        "hint": "单个文件提取结果的保留上限。留空表示自动（32 MiB 与总预算的较小值）。",
+    },
+    {
+        "key": "CBM_MAX_FILE_BYTES",
+        "env": "CBM_MAX_FILE_BYTES",
+        "label": "单文件大小上限（字节）",
+        "type": "int",
+        "min": 1,
+        "max": 9007199254740991,
+        "default": None,
+        "hint": "索引时跳过大于该值（字节）的文件。留空表示默认 536870912（512 MiB）。",
+    },
+    {
+        "key": "CBM_LOG_LEVEL",
+        "env": "CBM_LOG_LEVEL",
+        "label": "日志级别",
+        "type": "enum",
+        "options": ["debug", "info", "warn", "error", "none"],
+        "default": None,
+        "hint": "CBM 守护进程日志级别。留空表示默认 info。",
+    },
+)
+
+_RUNTIME_ENV_SPEC_BY_KEY = {spec["key"]: spec for spec in RUNTIME_ENV_SPECS}
+
 # MCP stdio 启动器模板：绕开 AstrBot 对 command 的白名单限制。
 _MCP_LAUNCHER_TEMPLATE = '''#!/usr/bin/env python3
 """CBM MCP stdio 启动器（由 astrbot_plugin_cbm 自动生成，请勿手动修改）。
@@ -65,12 +132,17 @@ import sys
 
 BINARY = {binary!r}
 CACHE_DIR = {cache!r}
+RUNTIME_ENV = {runtime_env!r}
 
 
 def main():
     env = dict(os.environ)
     if CACHE_DIR:
         env.setdefault("CBM_CACHE_DIR", CACHE_DIR)
+    # 应用插件的运行时调优项（budget_mb / physical_job_limit 等）。
+    for key, value in RUNTIME_ENV.items():
+        if value not in (None, ""):
+            env.setdefault(key, str(value))
     try:
         return subprocess.call([BINARY], env=env)
     except KeyboardInterrupt:
@@ -574,6 +646,91 @@ class CbmManager:
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), "utf-8")
         return data
 
+    # ---------- 运行时调优（budget_mb / physical_job_limit 等） ----------
+    def runtime_env_path(self) -> Path:
+        return self.root / "runtime_env.json"
+
+    def load_runtime_env(self) -> dict[str, Any]:
+        """读取用户保存的运行时调优项（键为 CBM 官方环境变量名）。
+
+        仅保留 RUNTIME_ENV_SPECS 中登记且值合法的项；不存在时返回空字典。
+        """
+        path = self.runtime_env_path()
+        if not path.exists():
+            return {}
+        try:
+            data = json.loads(path.read_text("utf-8"))
+        except Exception:
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        cleaned: dict[str, Any] = {}
+        for spec in RUNTIME_ENV_SPECS:
+            key = spec["key"]
+            if key not in data:
+                continue
+            value = self._coerce_runtime_value(spec, data.get(key))
+            if value is not None:
+                cleaned[key] = value
+        return cleaned
+
+    @staticmethod
+    def _coerce_runtime_value(spec: dict[str, Any], raw: Any) -> Any:
+        """校验并规范化单个运行时调优值；非法或空值返回 None（表示用自动/默认）。"""
+        if raw is None:
+            return None
+        text = str(raw).strip()
+        if text == "":
+            return None
+        if spec["type"] == "enum":
+            options = spec.get("options") or []
+            return text if text in options else None
+        # int
+        try:
+            number = int(float(text))
+        except (TypeError, ValueError):
+            return None
+        if number < spec.get("min", 0) or number > spec.get("max", 2**63 - 1):
+            return None
+        return number
+
+    def save_runtime_env(self, values: dict[str, Any]) -> dict[str, Any]:
+        """持久化运行时调优项；空值表示恢复该项为自动/默认（删除键）。"""
+        cleaned: dict[str, Any] = {}
+        for spec in RUNTIME_ENV_SPECS:
+            key = spec["key"]
+            if key not in values:
+                continue
+            value = self._coerce_runtime_value(spec, values.get(key))
+            if value is not None:
+                cleaned[key] = value
+        path = self.runtime_env_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(cleaned, ensure_ascii=False, indent=2), "utf-8")
+        return cleaned
+
+    def runtime_env(self) -> dict[str, str]:
+        """返回应注入 CBM 启动环境的环境变量字典（值为字符串）。"""
+        return {k: str(v) for k, v in self.load_runtime_env().items()}
+
+    def runtime_settings(self) -> list[dict[str, Any]]:
+        """返回运行时调优项的定义与当前值，供 WebUI 渲染。"""
+        current = self.load_runtime_env()
+        return [
+            {
+                "key": spec["key"],
+                "env": spec["env"],
+                "label": spec["label"],
+                "type": spec["type"],
+                "options": spec.get("options"),
+                "min": spec.get("min"),
+                "max": spec.get("max"),
+                "hint": spec["hint"],
+                "value": current.get(spec["key"]),
+            }
+            for spec in RUNTIME_ENV_SPECS
+        ]
+
     # ---------- 版本解析 ----------
     def get_latest_version(self) -> str:
         import urllib.request
@@ -823,6 +980,8 @@ class CbmManager:
 
         env = dict(os.environ)
         env["CBM_CACHE_DIR"] = str(resolved_cache)
+        # 注入运行时长调优项（budget_mb / physical_job_limit 等），重启后生效。
+        env.update(self.runtime_env())
 
         args = [str(self.binary_path), *self._build_args(variant, port)]
         log_fh = open(self.log_path, "ab", buffering=0)
@@ -1019,6 +1178,7 @@ class CbmManager:
         content = _MCP_LAUNCHER_TEMPLATE.format(
             binary=str(self.binary_path),
             cache=str(self.resolve_cache_dir()),
+            runtime_env=self.runtime_env(),
         )
         try:
             self.bin_dir.mkdir(parents=True, exist_ok=True)
@@ -1033,11 +1193,14 @@ class CbmManager:
         ``command`` 使用白名单内的 ``python3``，通过启动器脚本拉起 CBM 二进制。
         """
         launcher = self.ensure_mcp_launcher()
+        env = {"CBM_CACHE_DIR": str(self.resolve_cache_dir())}
+        # 让 MCP 方式启动的 CBM 也带上运行时调优项。
+        env.update(self.runtime_env())
         return {
             name: {
                 "command": "python3",
                 "args": [str(launcher)],
-                "env": {"CBM_CACHE_DIR": str(self.resolve_cache_dir())},
+                "env": env,
             }
         }
 
