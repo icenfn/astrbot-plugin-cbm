@@ -438,7 +438,7 @@ async function copyMcpHttpTemplate() {
   toast(ok ? "已复制 Streamable-HTTP 模板" : "复制失败，请手动选择复制", ok ? "ok" : "err");
 }
 
-function genMcpHttpToken() {
+async function genMcpHttpToken() {
   const bytes = new Uint8Array(24);
   if (window.crypto && window.crypto.getRandomValues) {
     window.crypto.getRandomValues(bytes);
@@ -452,7 +452,22 @@ function genMcpHttpToken() {
     state._mcpHttpDirty = true;
   }
   renderMcpHttpTemplate({ path: "/mcp" });
-  toast("已生成随机 Token，请点击「保存并生效」使其生效", "ok");
+  // 生成后立即复制到剪贴板，方便直接粘贴到客户端配置。
+  let copied = false;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      await navigator.clipboard.writeText(token);
+      copied = true;
+    } catch (e) {
+      copied = false;
+    }
+  }
+  toast(
+    copied
+      ? "已生成并复制 Token，请点击「保存并生效」使其生效"
+      : "已生成 Token（复制失败，请手动复制），请点击「保存并生效」使其生效",
+    copied ? "ok" : "err",
+  );
 }
 
 async function saveMcpHttp() {
