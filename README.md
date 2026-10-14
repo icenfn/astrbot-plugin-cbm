@@ -35,7 +35,7 @@ git clone https://github.com/icenfn/astrbot-plugin-cbm
 4. **概览** 页：在 **运行状态** 卡片查看状态 / 版本 / PID / 端口 / 数据目录 / **WebUI 地址**，并 **启动 / 停止 / 重启**。
 5. UI 版启动后，**WebUI 地址** 会显示在运行状态卡片中，复制到浏览器打开即可（CBM 面板无法内嵌到当前页面）。
 6. **MCP** 页会自动加载并刷新 CBM 的 stdio MCP 配置；点击 **添加到 AstrBot** 即可写入；也可 **复制** JSON 手动添加。重启 AstrBot 后生效。
-7. **MCP** 页的 **Streamable-HTTP 端点** 卡片：勾选 **启用**，填写 **监听地址 / 端口 / 访问 Token**（必填，可点「生成并复制Token」自动生成并复制），点击 **保存并生效**。端点启动后，下方 **客户端模板** 会给出对应的 `mcpServers` 配置片段（含 `Authorization: Bearer <token>`），点击 **复制** 即可粘贴到客户端。客户端连接示例：
+7. **MCP** 页的 **Streamable-HTTP 端点** 卡片：勾选 **启用**，填写 **监听地址 / 端口 / 访问 Token**（必填，可点「生成 Token」自动生成，编辑框右侧「眼睛」图标可切换明文/密文显示），点击 **保存并生效**。端点启动后，下方 **客户端模板** 会给出对应的 `mcpServers` 配置片段（含 `Authorization: Bearer <token>`），点击 **复制** 即可粘贴到客户端。客户端连接示例：
    ```json
    {
      "mcpServers": {

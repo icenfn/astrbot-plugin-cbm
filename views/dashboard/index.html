@@ -163,14 +163,18 @@
               </div>
               <div class="cbm-field">
                 <label>访问 Token</label>
-                <div class="cbm-input-row">
+                <div class="cbm-input-row cbm-input-password">
                   <input type="password" id="mcp-http-token" placeholder="设置访问 Token" autocomplete="new-password" />
+                  <button type="button" class="cbm-eye" id="btn-toggle-mcp-http-token" title="显示 / 隐藏 Token" aria-label="显示或隐藏 Token" aria-pressed="false">
+                    <span class="eye-show" aria-hidden="true">👁</span>
+                    <span class="eye-hide" aria-hidden="true">🙈</span>
+                  </button>
                 </div>
                 <p class="cbm-hint" id="mcp-http-token-hint">尚未设置 Token（必填）。留空表示不修改已保存的 Token。</p>
               </div>
               <div class="cbm-row">
                 <button class="cbm-btn primary" id="btn-save-mcp-http">保存并生效</button>
-                <button class="cbm-btn ghost mini" id="btn-gen-mcp-http-token" title="生成随机 Token 并复制到剪贴板">生成并复制Token</button>
+                <button class="cbm-btn ghost mini" id="btn-gen-mcp-http-token" title="生成随机 Token">生成 Token</button>
               </div>
               <p class="cbm-hint" id="mcp-http-status">保存后将按需启动 / 停止端点，并立即生效。</p>
             </section>
