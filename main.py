@@ -92,6 +92,8 @@ class CbmPlugin(Star):
 
         # 若 CBM 已在运行，补挂可视化反向代理（插件热重载场景）
         self._schedule(self._sync_ui_proxy())
+        # 若已启用 Streamable-HTTP 端点，插件加载时自动拉起（热重载场景）
+        self._schedule(self._sync_mcp_http())
 
         if self._cfg_bool("auto_start", False):
             self._schedule(self._auto_start())
@@ -130,6 +132,18 @@ class CbmPlugin(Star):
         except (TypeError, ValueError):
             return default
 
+    def _mcp_http_settings(self) -> dict:
+        """解析生效的 Streamable-HTTP 端点配置：面板保存值优先，其次插件配置项。"""
+        saved = self.manager.load_mcp_http_config()
+        if saved is not None:
+            return saved
+        return {
+            "enabled": self._cfg_bool("mcp_http_enabled", False),
+            "host": str(self._cfg("mcp_http_host", core.DEFAULT_MCP_HTTP_HOST) or core.DEFAULT_MCP_HTTP_HOST),
+            "port": self._cfg_int("mcp_http_port", core.DEFAULT_MCP_HTTP_PORT),
+            "token": str(self._cfg("mcp_http_token", "") or ""),
+        }
+
     def _auth_settings(self) -> dict:
         """解析生效的访问鉴权配置：控制面板「安全」标签页的保存值优先，其次插件配置项。"""
         saved = self.manager.load_auth_config()
@@ -162,6 +176,8 @@ class CbmPlugin(Star):
             (f"{P}/auth/save", self.api_auth_save, ["POST"], "保存面板访问鉴权配置"),
             (f"{P}/runtime", self.api_runtime_get, ["GET"], "读取 CBM 运行时调优项"),
             (f"{P}/runtime/save", self.api_runtime_save, ["POST"], "保存 CBM 运行时调优项"),
+            (f"{P}/mcp-http", self.api_mcp_http_get, ["GET"], "读取 MCP Streamable-HTTP 端点配置"),
+            (f"{P}/mcp-http/save", self.api_mcp_http_save, ["POST"], "保存 MCP Streamable-HTTP 端点配置"),
         ]
         for route, handler, methods, desc in routes:
             self.context.register_web_api(route, handler, methods, desc)
@@ -531,6 +547,92 @@ class CbmPlugin(Star):
             return error_response(f"写入失败：{exc}。请复制配置手动添加。", status_code=500)
         logger.info(f"已将 CBM 写入 AstrBot MCP 配置：{path}")
         return json_response({"ok": True, "path": str(path), "servers": servers})
+
+    # ------------------------------------------------------------------ #
+    # MCP Streamable-HTTP 端点
+    # ------------------------------------------------------------------ #
+    def _mcp_http_public(self) -> dict:
+        """组装返回给前端的 MCP HTTP 端点状态（含 Token 是否已设置，不含明文）。"""
+        settings = self._mcp_http_settings()
+        info = self.manager.mcp_http_info()
+        return {
+            "enabled": bool(settings.get("enabled")),
+            "host": str(info.get("host") or settings.get("host") or core.DEFAULT_MCP_HTTP_HOST),
+            "port": int(info.get("port") or settings.get("port") or core.DEFAULT_MCP_HTTP_PORT),
+            "token_set": bool(settings.get("token")),
+            "running": bool(info.get("running")),
+            "path": info.get("path") or core.MCP_HTTP_PATH,
+            "url": info.get("url"),
+        }
+
+    async def api_mcp_http_get(self):
+        return json_response(self._mcp_http_public())
+
+    async def api_mcp_http_save(self):
+        """保存并（按需）启停 Streamable-HTTP 端点。"""
+        payload = await request.json(default={})
+        enabled = bool(payload.get("enabled"))
+        host = str(payload.get("host") or core.DEFAULT_MCP_HTTP_HOST).strip() or core.DEFAULT_MCP_HTTP_HOST
+        try:
+            port = int(payload.get("port") or core.DEFAULT_MCP_HTTP_PORT)
+        except (TypeError, ValueError):
+            return error_response("端口必须是数字")
+
+        current = self._mcp_http_settings()
+        token = payload.get("token")
+        if token is None or token == "":
+            # 未填写新 Token：沿用已保存的 Token。
+            token = str(current.get("token") or "")
+        token = str(token)
+
+        if enabled:
+            if not token:
+                return error_response("启用 Streamable-HTTP 端点前必须设置访问 Token")
+            if port in (0,):
+                return error_response("端口不合法")
+
+        try:
+            await self._call(self.manager.save_mcp_http_config, enabled, host, port, token)
+        except Exception as exc:  # noqa: BLE001
+            return self._err(exc)
+
+        if enabled:
+            try:
+                info = await self._call(self.manager.start_mcp_http, host, port, token)
+            except CbmError as exc:
+                return error_response(exc.message, status_code=exc.status_code)
+            except Exception as exc:  # noqa: BLE001
+                return self._err(exc)
+            logger.info(
+                f"MCP Streamable-HTTP 端点已启动：{info.get('host')}:{info.get('port')}{info.get('path')}"
+            )
+        else:
+            try:
+                await self._call(self.manager.stop_mcp_http)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"停止 MCP Streamable-HTTP 端点失败：{exc}")
+            logger.info("MCP Streamable-HTTP 端点已停止")
+
+        return json_response({"ok": True, **self._mcp_http_public()})
+
+    async def _sync_mcp_http(self) -> None:
+        """插件加载时，若已启用 Streamable-HTTP 端点则自动拉起。"""
+        settings = self._mcp_http_settings()
+        if not settings.get("enabled"):
+            return
+        if not settings.get("token"):
+            logger.warning("已启用 MCP Streamable-HTTP 端点但未设置 Token，跳过启动")
+            return
+        try:
+            await self._call(
+                self.manager.start_mcp_http,
+                settings.get("host"),
+                settings.get("port"),
+                settings.get("token"),
+            )
+            logger.info("MCP Streamable-HTTP 端点已随插件启动")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"MCP Streamable-HTTP 端点自动启动失败: {exc}")
 
     # ------------------------------------------------------------------ #
     # 日志
