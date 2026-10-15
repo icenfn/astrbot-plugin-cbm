@@ -60,30 +60,6 @@
     "default": "",
     "hint": "启用访问鉴权时使用的密码。留空则鉴权不生效；建议在控制面板的「安全」标签页中设置。"
   },
-  "mcp_http_enabled": {
-    "description": "启用 Streamable-HTTP MCP 端点",
-    "type": "bool",
-    "default": false,
-    "hint": "CBM 仅支持 stdio MCP。开启后本插件把它桥接为标准 Streamable-HTTP 端点，供远程 MCP 客户端连接。默认关闭，需设置访问 Token。也可在插件控制面板的「MCP」标签页中即时修改。"
-  },
-  "mcp_http_host": {
-    "description": "Streamable-HTTP 端点监听地址",
-    "type": "string",
-    "default": "0.0.0.0",
-    "hint": "对外暴露的监听网卡。默认 0.0.0.0（所有网卡），也可填具体网卡 IP。"
-  },
-  "mcp_http_port": {
-    "description": "Streamable-HTTP 端点端口",
-    "type": "int",
-    "default": 8765,
-    "hint": "对外访问 Streamable-HTTP MCP 端点的端口。请确保开放防火墙；需与其它端口不同。默认 8765。"
-  },
-  "mcp_http_token": {
-    "description": "Streamable-HTTP 端点访问 Token",
-    "type": "string",
-    "default": "",
-    "hint": "必填。客户端连接时需在请求头携带 Authorization: Bearer <token>。留空则端点不会启动；建议在控制面板的「MCP」标签页中设置。"
-  },
   "auto_start": {
     "description": "随插件自动启动",
     "type": "bool",

@@ -5,7 +5,7 @@
 const bridge = window.AstrBotPluginView || window.AstrBotPluginPage;
 
 const $ = (id) => document.getElementById(id);
-const state = { variant: "ui", tab: "overview", installPolling: null, uiUrl: null, mcpHttpTemplate: "" };
+const state = { variant: "ui", tab: "overview", installPolling: null, uiUrl: null };
 
 // --------------------------- 通用工具 --------------------------- //
 function toast(msg, type = "") {
@@ -185,8 +185,7 @@ function switchTab(name) {
   // 切到 MCP / 日志 / 安全 / 调优标签页时自动加载对应内容。
   if (name === "mcp") {
     loadMcp(true);
-    loadMcpHttp(true);
-  }
+    }
   if (name === "security") loadAuth(true);
   if (name === "tuning") loadTuning(true);
   if (name === "logs") loadLogs(true);
@@ -321,7 +320,6 @@ async function loadMcp(silent = false) {
   if (!silent) box.textContent = "加载中…";
   try {
     const data = await bridge.apiGet("mcp");
-    state.mcpSnippet = data.snippet || "";
     const text = data.snippet || "（无法生成配置）";
     if (box.textContent !== text) box.textContent = text;
     const st = $("mcp-status");
@@ -329,21 +327,6 @@ async function loadMcp(silent = false) {
   } catch (e) {
     if (!silent) box.textContent = "读取失败：" + e.message;
   }
-}
-
-async function copyMcp() {
-  if (!state.mcpSnippet) await loadMcp(true);
-  if (!state.mcpSnippet) return;
-  let ok = false;
-  if (navigator.clipboard) {
-    try {
-      await navigator.clipboard.writeText(state.mcpSnippet);
-      ok = true;
-    } catch (e) {
-      ok = false;
-    }
-  }
-  toast(ok ? "已复制 MCP 配置" : "复制失败，请手动选择复制", ok ? "ok" : "err");
 }
 
 async function addMcp() {
@@ -355,136 +338,7 @@ async function addMcp() {
     const st = $("mcp-status");
     if (st) st.textContent = "已添加到 " + (res.path || "AstrBot mcp_server.json") + "，重启 AstrBot 后生效。";
   } catch (e) {
-    toast("添加失败：" + e.message + "（可复制配置手动添加）", "err");
-  } finally {
-    busy(btn, false);
-  }
-}
-
-async function loadMcpHttp(silent = false) {
-  try {
-    const data = await bridge.apiGet("mcp-http");
-    const tag = $("mcp-http-tag");
-    if (tag) {
-      tag.textContent = data.running
-        ? "运行中"
-        : data.enabled
-          ? "已启用（未运行）"
-          : "已关闭";
-    }
-    const en = $("mcp-http-enabled");
-    if (en && !state._mcpHttpDirty) en.checked = !!data.enabled;
-    const host = $("mcp-http-host");
-    if (host && !state._mcpHttpDirty && !host.value) host.value = data.host || "0.0.0.0";
-    const port = $("mcp-http-port");
-    if (port && !state._mcpHttpDirty && !port.value) port.value = data.port || 8765;
-    const th = $("mcp-http-token");
-    if (th) th.placeholder = data.token_set ? "留空表示不修改已保存的 Token" : "设置访问 Token";
-    const thh = $("mcp-http-token-hint");
-    if (thh) {
-      thh.textContent = data.token_set
-        ? "已设置 Token（出于安全不显示明文）。留空表示不修改。"
-        : "尚未设置 Token（必填）。留空表示不修改已保存的 Token。";
-    }
-    const st = $("mcp-http-status");
-    if (st) {
-      st.textContent = data.running
-        ? `端点运行中：${data.url || ""}（客户端需携带 Authorization: Bearer <token>）`
-        : data.enabled
-          ? "已启用但端点未运行，可点击「保存并生效」重试。"
-          : "端点已关闭。";
-    }
-    renderMcpHttpTemplate(data);
-  } catch (e) {
-    if (!silent) toast("读取 Streamable-HTTP 配置失败：" + e.message, "err");
-  }
-}
-
-function renderMcpHttpTemplate(data) {
-  const box = $("mcp-http-template");
-  if (!box) return;
-  const host = ($("mcp-http-host") && $("mcp-http-host").value.trim()) || data.host || "127.0.0.1";
-  const port = ($("mcp-http-port") && $("mcp-http-port").value.trim()) || data.port || "8765";
-  // 对外模板用 127.0.0.1 作为示例主机名更直观；若用户填了具体 host 则沿用。
-  const url = `http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${port}${data.path || "/mcp"}`;
-  const tokenValue =
-    ($("mcp-http-token") && $("mcp-http-token").value) || "<token>";
-  const tmpl = {
-    mcpServers: {
-      cbm: {
-        type: "streamable-http",
-        url: url,
-        headers: { Authorization: `Bearer ${tokenValue}` },
-      },
-    },
-  };
-  const text = JSON.stringify(tmpl, null, 2);
-  state.mcpHttpTemplate = text;
-  if (box.textContent !== text) box.textContent = text;
-}
-
-async function copyMcpHttpTemplate() {
-  const text = state.mcpHttpTemplate || ($("mcp-http-template") && $("mcp-http-template").textContent);
-  if (!text) return;
-  let ok = false;
-  if (navigator.clipboard) {
-    try {
-      await navigator.clipboard.writeText(text);
-      ok = true;
-    } catch (e) {
-      ok = false;
-    }
-  }
-  toast(ok ? "已复制 Streamable-HTTP 模板" : "复制失败，请手动选择复制", ok ? "ok" : "err");
-}
-
-function genMcpHttpToken() {
-  const bytes = new Uint8Array(24);
-  if (window.crypto && window.crypto.getRandomValues) {
-    window.crypto.getRandomValues(bytes);
-  } else {
-    for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
-  }
-  const token = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-  const th = $("mcp-http-token");
-  if (th) {
-    th.value = token;
-    state._mcpHttpDirty = true;
-  }
-  renderMcpHttpTemplate({ path: "/mcp" });
-  toast("已生成随机 Token，请点击「保存并生效」使其生效", "ok");
-}
-
-// 切换 Token 输入的明文/密文显示（眼睛图标）。
-function toggleMcpHttpToken() {
-  const th = $("mcp-http-token");
-  const btn = $("btn-toggle-mcp-http-token");
-  if (!th || !btn) return;
-  const show = th.type === "password";
-  th.type = show ? "text" : "password";
-  btn.setAttribute("data-shown", show ? "1" : "0");
-  btn.setAttribute("aria-pressed", show ? "true" : "false");
-}
-
-async function saveMcpHttp() {
-  const enabled = $("mcp-http-enabled").checked;
-  const host = ($("mcp-http-host").value || "").trim() || "0.0.0.0";
-  const port = parseInt($("mcp-http-port").value, 10) || 8765;
-  const token = $("mcp-http-token").value;
-  if (enabled && !token && !state._mcpHttpTokenSet) {
-    toast("启用前必须设置访问 Token", "err");
-    return;
-  }
-  const btn = $("btn-save-mcp-http");
-  busy(btn, true);
-  try {
-    const res = await bridge.apiPost("mcp-http/save", { enabled, host, port, token });
-    state._mcpHttpDirty = false;
-    $("mcp-http-token").value = "";
-    toast(res.running ? "Streamable-HTTP 端点已启用并运行" : enabled ? "配置已保存" : "Streamable-HTTP 端点已关闭", "ok");
-    await loadMcpHttp(true);
-  } catch (e) {
-    toast("保存失败：" + e.message, "err");
+    toast("添加失败：" + e.message + "（请手动添加）", "err");
   } finally {
     busy(btn, false);
   }
@@ -717,24 +571,7 @@ function bind() {
   $("btn-uninstall").addEventListener("click", doUninstall);
   $("btn-load-logs").addEventListener("click", () => loadLogs(false));
   $("auto-logs").addEventListener("change", (e) => setLogAutoRefresh(e.target.checked));
-  $("btn-mcp-copy").addEventListener("click", copyMcp);
   $("btn-mcp-add").addEventListener("click", addMcp);
-
-  // MCP Streamable-HTTP 端点：任一输入变更即视为「已编辑」，避免轮询回填覆盖。
-  const markMcpHttpDirty = () => {
-    state._mcpHttpDirty = true;
-  };
-  ["mcp-http-enabled", "mcp-http-host", "mcp-http-port", "mcp-http-token"].forEach((id) => {
-    const el = $(id);
-    if (el) {
-      el.addEventListener("input", markMcpHttpDirty);
-      el.addEventListener("change", markMcpHttpDirty);
-    }
-  });
-  if ($("btn-save-mcp-http")) $("btn-save-mcp-http").addEventListener("click", saveMcpHttp);
-  if ($("btn-gen-mcp-http-token")) $("btn-gen-mcp-http-token").addEventListener("click", genMcpHttpToken);
-  if ($("btn-toggle-mcp-http-token")) $("btn-toggle-mcp-http-token").addEventListener("click", toggleMcpHttpToken);
-  if ($("btn-mcp-http-template-copy")) $("btn-mcp-http-template-copy").addEventListener("click", copyMcpHttpTemplate);
 
   // 安全标签页：任一输入变更即视为「已编辑」，避免轮询回填覆盖。
   const markAuthDirty = () => {
@@ -822,14 +659,12 @@ async function loadMirrorDefault() {
   bind();
   refreshStatus();
   loadMcp(true);
-  loadMcpHttp(true);
   // 每 5 秒轮询一次状态；运行中时同步刷新 MCP 配置。
   setInterval(() => {
     if (document.hidden) return;
     refreshStatus();
     if (state.tab === "mcp") {
       loadMcp(true);
-      loadMcpHttp(true);
-    }
+        }
   }, 5000);
 })();
